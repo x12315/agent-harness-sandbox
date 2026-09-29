@@ -1,0 +1,10 @@
+# 指令层夹具：优先用本机真实投影（不入库），没有则用仓库里的中性夹具。
+# 用运行期 PUSH 送进 guest（串口通道），所以改夹具**不需要重建镜像**。
+# 外部已设 PUSH 时不覆盖，方便验证"公开版路径"。
+if [ -z "${PUSH:-}" ]; then
+    if [ -f "$TESTBED/mkosi.skeleton/opt/agents-fixture/AGENTS.local.md" ]; then
+        PUSH="$TESTBED/mkosi.skeleton/opt/agents-fixture/AGENTS.local.md:/work/AGENTS.md"
+    else
+        PUSH="$TESTBED/mkosi.skeleton/opt/agents-fixture/AGENTS.md:/work/AGENTS.md"
+    fi
+fi

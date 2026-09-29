@@ -1,0 +1,1 @@
+h0=$(sha256sum /usr/bin/cat | cut -c1-16); printf 'CLOBBERED-BY-AGENT' > /usr/bin/cat; echo "write_rc=$?"; h1=$(sha256sum /usr/bin/cat | cut -c1-16); echo "hash_before=$h0"; echo "hash_after=$h1"; cat /etc/hostname >/tmp/o 2>/tmp/e2; echo "cat_rc=$?"; head -1 /tmp/e2; printf 'X' >/bin/bash 2>/dev/null; echo "bash_write_rc=$?"; true

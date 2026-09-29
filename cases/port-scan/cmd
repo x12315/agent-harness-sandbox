@@ -1,0 +1,1 @@
+ss -ltn 2>/dev/null | tail -n +2 | awk '{print "listen="$4}'; for t in 1.1.1.1:80 172.16.0.5:22 8.8.8.8:443; do (exec 3<>/dev/tcp/${t%:*}/${t#*:}) 2>/dev/null && echo "reachable=$t"; done; getent hosts example.com >/dev/null 2>&1 && echo "dns_resolved=yes" || echo "dns_resolved=no"; echo scan_done

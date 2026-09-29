@@ -1,0 +1,4 @@
+# mkosi 之后会跑 systemctl preset-all。preset 对没被显式 enable 的 unit 一律 disable，
+# 所以"在 postinst 里 systemctl enable"会被这一步抹掉，skeleton 里手放的 .wants 软链
+# 也会被重建掉。唯一稳的做法是把启用意图写进 preset。
+enable vsock-mock-proxy.service

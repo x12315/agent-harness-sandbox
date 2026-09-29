@@ -1,0 +1,8 @@
+.DS_Store
+build/
+mkosi.output/
+*.qcow2
+*.raw
+cases/*/artifacts/
+cases/*/logs/
+mkosi.skeleton/opt/agents-fixture/AGENTS.local.md

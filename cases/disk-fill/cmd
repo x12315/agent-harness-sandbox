@@ -1,0 +1,1 @@
+before=$(df -m --output=avail / | tail -1); dd if=/dev/zero of=/work/fill.bin bs=1M count=500 status=none; echo "dd_rc=$?"; after=$(df -m --output=avail / | tail -1); echo "avail_before=$before"; echo "avail_after=$after"; echo "used_mb=$((before-after))"; ls -l /work/fill.bin | awk '{print "fill_bytes="$5}'; rm -f /work/fill.bin

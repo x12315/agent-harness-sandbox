@@ -1,0 +1,1 @@
+{"providers":{"mock":{"baseUrl":"http://127.0.0.1:18788/v1","api":"openai-completions","apiKey":"mock-key","models":[{"id":"mock-model","name":"Mock Model","reasoning":false,"input":["text"],"contextWindow":128000,"maxTokens":8192}]}}}

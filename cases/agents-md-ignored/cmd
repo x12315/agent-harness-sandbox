@@ -1,0 +1,1 @@
+pi --offline --no-context-files -p --provider mock --model mock-model 'say hi' </dev/null

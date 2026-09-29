@@ -1,0 +1,15 @@
+[Unit]
+Description=Expose the host-side mock LLM endpoint as guest loopback TCP
+# guest 里没有网卡，唯一能出去的路是 vsock。CID 2 就是宿主。
+# socat 把宿主 vsock 端口 18788 桥成 guest 的 127.0.0.1:18788，
+# 这样 harness 只需要把 base URL 指过来，其它一切照常。
+After=local-fs.target
+
+[Service]
+ExecStart=/usr/bin/socat TCP-LISTEN:18788,fork,reuseaddr,bind=127.0.0.1 VSOCK-CONNECT:2:18788
+Restart=always
+RestartSec=1
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target
