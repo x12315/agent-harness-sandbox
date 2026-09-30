@@ -1,7 +1,7 @@
 # 盲区声明
 
-这份文件回答一个问题：**这个沙盒测不到什么。** 一条都不掩饰，因为"不知道自己不知道"
-比测不出来更危险。
+这份文件回答一个问题：**这个沙盒测不到什么。** 第一至第五节是 Linux vmspawn
+无网卡后端的保证和盲区；macOS Tart 后端的不同保证见第六节。
 
 ## 一、设计上排除的（无网卡的必然后果）
 
@@ -23,7 +23,7 @@
 
 | 未覆盖 | 说明 |
 | --- | --- |
-| GUI / computer-use / 浏览器 | 镜像里没有 X/Wayland、没有浏览器、没有 VNC。要做需要另建镜像（参考 `agent-infra/sandbox` 那类自带 VNC 的方案） |
+| Linux GUI / computer-use / 浏览器 | Linux 镜像里没有 X/Wayland、没有浏览器、没有 VNC；macOS 后端虽有原生 GUI，目前尚未实现 GUI 用例 |
 | 多节点与并发 | 全部用例串行。宿主上并发跑多条用例时的相互影响、资源争抢、端口冲突都没测 |
 | 让 agent 自助申请沙盒的 API | 现在是 CLI。要做要走 Incus restricted project / E2B / agent-substrate，且与"权限收敛到非 root 用户"有张力 |
 | 资源耗尽（CPU / 内存 / PID 打满） | DSec 记录过递归 `grep /proc/kpagecgroup`、`yes` 写满几十 GB。我们只做了**有界**的磁盘填充 |
@@ -64,7 +64,7 @@
 想彻底消除这条，只有两种办法 —— 换用专用非特权账号（`bin/bootstrap-host.sh` 仍留着，
 需要 root），或者永远用 `PRIVDROP=1` 跑。
 
-另外：宿主侧还没有 per-case 的资源上限（cgroup slice）。现在用例串行、每台 2 核 2G，
+另外：宿主侧还没有 per-case 的资源上限（cgroup slice）。现在 Linux 用例串行、每台 2 核 2G，
 但一条失控用例仍可能拖慢宿主。
 
 ## 五、环境脆弱点
@@ -74,5 +74,15 @@
 | 依赖 alpha 上的用户级 mkosi（devel 版） | 换机器/清 home 就失效 | `docs/host-prereqs.md` 记了重建方式 |
 | `virtiofsd` 在本机起不来 | 不能用 `--directory=`，产物只能走串口 | 已绕开；若将来修好可简化产物通道 |
 | 宿主 `/etc/resolv.conf` 首条是 `127.0.0.1` | 会让依赖宿主 DNS 的方案发疯 | 我们不用 DNS，不受影响；但换机器时要注意 |
-| 宿主上还跑着一个 Home Assistant VM（约 3G RSS） | 资源共用 | 用例串行、每台 2 核 2G，暂未冲突 |
-| 测试床没有任何宿主侧资源上限（cgroup slice） | 一条失控用例可能拖慢宿主 | 记录为待办 |
+| 宿主上还跑着一个 Home Assistant VM（约 3G RSS） | 资源共用 | Linux 用例串行、每台 2 核 2G，暂未冲突 |
+
+## 六、macOS Tart：新增能力不继承 Linux 保证
+
+| 能测 | 仍不能据此断言 |
+| --- | --- |
+| 原生 macOS 上的 agent CLI（已有 `macos-pi-discovery`） | iTerm GUI 窗口行为；还没有对应的窗口与会话断言 |
+| Tart 从已配置基底克隆、SSH 执行并删除临时 VM | 从裸 IPSW 无人值守建基底；也不继承 Linux 的 airgap、vsock mock、串口或 NoNewPrivs |
+| guest 原生网络行为（默认 NAT） | 宿主网络隔离：guest 可访问外网和部分宿主服务 |
+
+macOS 测试用例没有宿主侧 CPU/内存上限，基底 VM 保留在本机。启用 Softnet 所需的宿主
+root/SUID 权限尚未授权；当前走零特权 NAT，不将网络隔离写入通过结论。

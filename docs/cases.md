@@ -1,11 +1,16 @@
-# 用例与断言（task-5）
+# 用例与断言
 
-一条用例 = `cases/<id>/` 目录里的定义文件（**定义在仓库，产物在 $OUT/runs/<id>/**，
+下文的两条基准用例与 `bin/run-case.sh` 属于 Linux vmspawn 后端；macOS Tart 用例见
+`cases/macos-pi-discovery/` 和 `docs/macos-tart.md`。两者都可从 Mac 调用 `bin/test.sh <id>`，
+公共取证文件是 `guest/tmp/ah.{out,err,rc}`，其余证据依后端而定。
+
+一条 Linux 用例 = `cases/<id>/` 目录里的定义文件（**定义在仓库，产物在 $OUT/runs/<id>/**，
 因为 `bin/sync.sh` 是整目录替换，产物留在仓库树里会被下一次同步连根删掉）：
 
 | 文件 | 作用 |
 | --- | --- |
-| `cmd` | 在 guest 里跑的那一行命令（必填） |
+| `cmd` | 在 Linux guest 里跑的那一行命令（必填） |
+| `target` | 缺省 `linux-vmspawn`；写 `macos-tart` 则由 Mac 本地 Tart 后端运行 |
 | `assert.sh` | 拿到产物之后跑的断言，接一个参数：用例目录（可选） |
 
 用例本身进了 git，所以"被测对象 + 断言口径"是一起版本化的；`bin/run-case.sh <id>`
@@ -48,7 +53,7 @@ assert=pi-turn PASS
 mkdir cases/<新 id>
 printf '%s\n' '<在 guest 里跑的命令>' > cases/<新 id>/cmd
 $EDITOR cases/<新 id>/assert.sh   # 用 jq 读传入的那个产物目录（$OUT/runs/<新 id>）
-bin/sync.sh && ssh alpha 'cd ~/agent-harness-sandbox && bash bin/run-case.sh <新 id>'
+bin/sync.sh && bin/test.sh <新 id>  # Linux；macOS 用例无需 sync，先按 docs/macos-tart.md 构建镜像
 ```
 
 ## 踩过的三个坑（都体现在 runner 里）

@@ -1,23 +1,28 @@
 # agent-harness-sandbox
 
-给 agent harness（Claude Code / pi）用的专用测试沙盒。目标：**除网络层外全部可测**。
+给 agent harness（Claude Code / pi）用的多后端测试项目。按用例选择 VM，而不是让不同 VM 假装有相同的隔离能力：
 
-一条用例 = 一台**没有网卡**的完整虚拟机。
+- **Linux vmspawn**：无网卡全 VM，vsock 模型 mock、串口和 QEMU monitor 带外取证；
+  每例从镜像临时启动并丢弃。适合请求形状、指令层和越界用例。
+- **macOS Tart**：从已配置的本地 macOS VM 克隆；每例经 SSH 执行、取证、销毁。
+  适合 pi 和 iTerm 等 macOS 行为；默认 NAT **不是**物理 airgap。目前只验收 pi CLI，尚未验收 GUI 用例。
 
-- 唯一对外通道是 **vsock** 上的 mock 模型服务 —— 不是"策略禁止联网"，是这台 VM 里根本不存在网络设备。
-- 带外靠**串口 console** 与 `--console=native` 的 **QEMU monitor**：guest 内的东西把系统搞死了也能拿现场。
-- 每条用例从同一个镜像、同一个状态开始，`--ephemeral` 保证退出即丢弃。
+统一入口：`bin/test.sh <case-id>`。缺少 `cases/<id>/target` 时沿用 Linux 后端；
+`target=macos-tart` 选择 Tart。共同契约是退出码、产物目录与 `guest/tmp/ah.{out,err,rc}`，
+不强行统一串口、mock 或 GUI 证据。
+
+**使用边界：** 这是供可信项目编写用例的 CLI 测试床，不是接受任意第三方仓库的安全执行服务。Linux 用例的 `env`、`post.sh`、`assert.sh`，以及 macOS 用例的 `assert.sh` 都会在宿主执行；外部项目提供的用例定义必须先审查，不能把不可信脚本直接交给 runner。macOS 默认 NAT，也不能用于验证无网卡隔离。
 
 ## 分工
 
 | 位置 | 角色 |
 | --- | --- |
-| Mac `~/Desktop/agent-harness-sandbox` | **唯一真相源**（git）：mkosi 配置、skeleton、薄脚本、用例定义 |
-| 一台 Linux 主机（本文档里叫 `alpha`，只是个 ssh 别名，可用 `REMOTE=` 覆盖） | **构建与运行**：mkosi 造镜像、systemd-vmspawn 起 VM；不放真相源 |
+| Mac `~/Desktop/agent-harness-sandbox` | **唯一真相源**（git）：Linux 构建配方、两个 runner 和用例定义；Tart 在本机运行 |
+| 一台 Linux 主机（本文档里叫 `alpha`，只是个 ssh 别名，可用 `REMOTE=` 覆盖） | **Linux 后端构建与运行**：mkosi 造镜像、systemd-vmspawn 起 VM；不放真相源 |
 
 同步用 `bin/sync.sh`（tar over ssh；alpha 上没装 rsync）。构建产物落在 alpha 的 `~/ahsb-build/`，不属于同步树。
 
-## 为什么是这套引擎
+## Linux 后端为什么用 vmspawn
 
 | 需求 | 机制 |
 | --- | --- |
@@ -40,8 +45,10 @@ mkosi.skeleton/       烧进镜像的静态文件：vsock shim、sshd 配置、A
 mock/mock_llm.py      确定性 mock 模型 API（Anthropic + OpenAI 双协议，逐请求写 JSONL）
 bin/sync.sh           把仓库同步到 alpha
 bin/build-image.sh    在 alpha 上构建 golden 镜像（task-3）
-bin/run-case.sh       一条用例的完整生命周期（task-4）
-cases/                用例定义（task-5..7）
+bin/run-case.sh       Linux 用例原有生命周期（仍可在 alpha 直接调用）
+bin/test.sh           Mac 上的统一入口，按 cases/<id>/target 分发
+bin/run-macos-case.sh Tart 用例：克隆 → 执行 → 取证 → 销毁
+cases/                用例定义（Linux 缺省；macOS 显式写 target）
 docs/                 决策记录、清理记录、盲区声明
 ```
 
@@ -49,17 +56,20 @@ docs/                 决策记录、清理记录、盲区声明
 
 | 需要 | 说明 |
 | --- | --- |
-| 一台 Linux 主机（KVM 裸机，或开了嵌套虚拟化） | `/dev/kvm`、`/dev/vhost-vsock` 可读写；systemd ≥ 260（`--ephemeral`）；QEMU + OVMF。**不需要 root** |
-| 一个 ssh 可达的别名 | 本文档统一写作 `alpha`，只是本机的别名；`REMOTE=<你的别名> bin/sync.sh` 可覆盖 |
-| 构建期有外网 | mkosi 装包 + npm 装两个 harness；**运行期完全不需要网** |
+| Linux 用例：一台 Linux 主机（KVM 裸机，或开了嵌套虚拟化） | `/dev/kvm`、`/dev/vhost-vsock` 可读写；systemd ≥ 260（`--ephemeral`）；QEMU + OVMF。**不需要 root** |
+| macOS 用例：Apple Silicon Mac | macOS 13+、Tart、已配置且停机的本地 macOS 基底 VM；前置条件见 `docs/macos-tart.md` |
+| Linux 用例：一个 ssh 可达的别名 | 本文档统一写作 `alpha`，只是本机的别名；`REMOTE=<你的别名> bin/sync.sh` 可覆盖 |
+| Linux 构建期有外网 | mkosi 装包 + npm 装两个 harness；Linux 运行期 VM 无网卡。macOS 备好基底 VM 后，测试时默认 NAT |
 | （可选）你自己的 `~/.agents/AGENTS.md` | 有它，指令层用例验证的是**你的真实指令层**；没有则用仓库里的中性夹具，用例照样全绿 |
 
-本仓库在 macOS 上维护、在 Linux 上构建与运行；Mac 侧只需要 `git`、`ssh`、`tar`。
+Linux 后端在 macOS 上维护、在 Linux 上构建与运行；macOS 后端在 Mac 上运行。
+Linux 路径的 Mac 侧只需要 `git`、`ssh`、`tar`；macOS 用例还需要 Tart、
+已配置的基底 VM 与相应断言工具（当前 `macos-pi-discovery` 需要 `jq`）。
 
-## 测试身份
+## Linux 测试身份
 
-测试一律以**发起者本人**（当前登录的非 root 用户，uid 1001）身份跑，不引入专用账号。
-零特权的保证来自加在每条用例上的 `NoNewPrivs`（连 `sudo` 都拒绝以 root 运行），
+Linux 用例以**发起者本人**（当前登录的非 root 用户，uid 1001）身份跑，不引入专用账号。
+`PRIVDROP=1` 验收的零特权保证来自 `NoNewPrivs`（连 `sudo` 都拒绝以 root 运行），
 而不是来自账号 —— 证据与残余风险见 `docs/BLINDSPOTS.md` 第四节。
 
 ## 用法
@@ -74,14 +84,18 @@ ssh alpha 'bash ~/agent-harness-sandbox/bin/build-image.sh'
 # 2.6 零特权验收：整条测试路径套上 NoNewPrivs（连 sudo 都拒绝以 root 运行）
 ssh alpha 'cd ~/agent-harness-sandbox && PRIVDROP=1 bash bin/acceptance.sh'
 
-# 3. 跑一条用例（一条命令走完起 VM→等就绪→执行→收产物→销毁）
-ssh alpha "cd ~/agent-harness-sandbox && bash bin/run-case.sh <case-id> '<一行命令>'"
+# 3. 从 Mac 跑一条 Linux 用例（也可在 alpha 直接调用原有 run-case.sh）
+bin/test.sh pi-turn
+
+# 4. 运行 macOS 用例：先按 docs/macos-tart.md 准备基底 VM 并设置本机的三个环境变量
+bin/test.sh macos-pi-discovery
 ```
 
-用例**定义**在仓库里（`cases/<case-id>/`：`cmd` 与可选的 `assert.sh`/`post.sh`/`env`）；
-用例**产物**落在 alpha 的 `~/ahsb-build/runs/<case-id>/`（同步树之外，`bin/sync.sh` 抹不掉），
-具体清单见 `bin/run-case.sh` 头部注释。出问题先看同目录的 `console.txt`（串口全文）
-与 `monitor.txt`（带外通道）。
+用例**定义**在仓库里（`cases/<case-id>/`：`cmd`、可选的 `target`/`assert.sh`；Linux
+还支持 `post.sh`/`env`）。Linux 产物在 alpha 的 `~/ahsb-build/runs/<case-id>/`，
+macOS 产物在 Mac 的 `~/ahsb-build/runs/<case-id>/<run-id>/`，均在同步树之外。
+两个后端都写 `guest/tmp/ah.{out,err,rc}`；Linux 额外写串口、monitor、mock 证据，
+macOS 写 VM 日志。`bin/acceptance.sh` 目前仍只验收 Linux。
 
 ## 状态
 
@@ -92,13 +106,17 @@ ssh alpha "cd ~/agent-harness-sandbox && bash bin/run-case.sh <case-id> '<一行
 - [x] task-5 两个 harness 绿色闭环与三处断言（见 `docs/cases.md`）
 - [x] task-6 AGENTS.md 行为验证（见 `docs/instruction-layer.md`）
 - [x] task-7 越界与破坏用例第一批（见 `docs/isolation-cases.md`）
-- [x] task-8 权限收敛、清理与验收报告（见 `docs/acceptance.md`、`docs/BLINDSPOTS.md`）
+- [x] task-8 Linux 权限收敛、清理与验收报告（见 `docs/acceptance.md`、`docs/BLINDSPOTS.md`）
+- [x] 多后端统一入口与 macOS pi CLI 用例；Linux `pi-turn`、`claude-turn` 和 macOS `macos-pi-discovery` 已分别在对应后端通过（见 `docs/macos-tart.md`）
+- [ ] 从裸 IPSW 无人值守制作 macOS 基底镜像（Setup Assistant 自动化尚未稳定）
+- [ ] macOS iTerm GUI 窗口用例及断言
 
 ## 已知盲区
 
-- **真实网络层**：DNS、TLS 证书链、代理、跨机行为 —— 这是设计上的排除项，不是遗漏。
-- **GUI / computer-use / 浏览器**。
-- **多节点**与「让别的 agent 通过 API 自助申请沙盒」——那条路要 Incus / E2B / agent-substrate，且与"权限收敛到非 root 用户"有张力。
+- Linux 设计上排除**真实网络层**；macOS 默认 NAT 可联网，却没有 Linux 的物理 airgap。
+  Tart 的 Softnet/仅主机网络模式需要宿主 root/SUID，本项目不自动申请或启用。
+- Linux 没有 GUI；macOS 可运行 GUI，但当前只有 pi CLI 用例，**iTerm GUI 未验收**。
+- **多节点**与「让别的 agent 通过 API 自助申请沙盒」仍不支持。
 
 完整盲区清单见 `docs/BLINDSPOTS.md`。
 
@@ -111,8 +129,9 @@ ssh alpha "cd ~/agent-harness-sandbox && bash bin/run-case.sh <case-id> '<一行
 | `docs/cases.md` | 用例定义与三层断言 |
 | `docs/instruction-layer.md` | 指令层验证的正反例、投影方式与不可测部分 |
 | `docs/isolation-cases.md` | 越界/破坏用例、结论与每条用例暴露的盲区 |
-| `docs/acceptance.md` | 从零复现的验收记录（环境、哈希、7 条用例结果） |
-| `docs/BLINDSPOTS.md` | 盲区声明：测不到什么，以及为什么 |
+| `docs/acceptance.md` | Linux 从零复现的验收记录（环境、哈希、8 条用例结果） |
+| `docs/BLINDSPOTS.md` | Linux 盲区与 macOS 后端的不同保证 |
+| `docs/macos-tart.md` | macOS 基底前置条件、CLI 调用及隔离边界 |
 | `docs/golden-image.md` | golden 镜像定义与验收 |
 | `docs/host-prereqs.md` | alpha 前置条件、两处临时 hack、环境坑清单 |
 | `docs/alpha-cleanup.md` | 上一版（microsandbox）产物的回收记录 |

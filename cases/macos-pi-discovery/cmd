@@ -1,0 +1,1 @@
+printf '{"id":"1","type":"get_commands"}\n' | pi --mode rpc

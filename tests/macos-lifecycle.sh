@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Exercise the macOS runner without booting a VM or opening a host window.
+set -euo pipefail
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+TMP=$(mktemp -d "$ROOT/.test-macos.XXXXXX")
+probe_pid=
+cleanup() {
+    [ -z "$probe_pid" ] || { kill "$probe_pid" 2>/dev/null || true; wait "$probe_pid" 2>/dev/null || true; }
+    rm -rf "$TMP"
+}
+trap cleanup EXIT
+mkdir -p "$TMP/bin" "$TMP/state"
+printf 'seed ssh-ed25519 test-key\n' > "$TMP/known_hosts"
+: > "$TMP/id_ed25519"
+
+cat > "$TMP/bin/tart" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+operation=$1; shift
+case "$operation" in
+    get)
+        if [ "$1" != seed ] && [ ! -f "$FAKE_STATE/present" ]; then exit 1; fi
+        printf 'OS State\ndarwin stopped\n'
+        ;;
+    clone) touch "$FAKE_STATE/present" ;;
+    run)
+        trap 'exit 0' TERM
+        while [ ! -f "$FAKE_STATE/stopped" ]; do sleep 0.1; done
+        ;;
+    ip) printf '127.0.0.1\n' ;;
+    stop) touch "$FAKE_STATE/stopped" ;;
+    delete) rm -f "$FAKE_STATE/present"; touch "$FAKE_STATE/deleted" ;;
+    *) exit 2 ;;
+esac
+EOF
+cat > "$TMP/bin/ssh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${!#}" = /usr/bin/true ]; then
+    if [ "${FAKE_SSH_MODE:-}" = host-key-fail ]; then
+        echo 'Host key verification failed' >&2
+        exit 255
+    fi
+    exit 0
+fi
+touch "$FAKE_STATE/running-case"
+if [ "${FAKE_SSH_MODE:-}" = pass ]; then
+    printf '{"command":"get_commands","success":true,"data":{"commands":[]}}\n'
+    exit 0
+fi
+exec sleep 10
+EOF
+chmod +x "$TMP/bin/tart" "$TMP/bin/ssh"
+export PATH="$TMP/bin:$PATH" FAKE_STATE="$TMP/state"
+export TART_BASE_VM=seed TART_KNOWN_HOSTS="$TMP/known_hosts" TART_SSH_KEY="$TMP/id_ed25519"
+run_case() {
+    local name=$1 mode=$2 timeout=$3
+    rm -f "$FAKE_STATE"/{stopped,deleted,running-case}
+    export RUN_DIR="$TMP/$name" FAKE_SSH_MODE=$mode CASE_TIMEOUT=$timeout
+    bash "$ROOT/bin/run-macos-case.sh" macos-pi-discovery > "$TMP/$name.out" 2> "$TMP/$name.err"
+}
+
+if run_case invalid pass 0; then echo 'invalid timeout was accepted' >&2; exit 1; fi
+grep -q 'CASE_TIMEOUT must be a positive number' "$TMP/invalid.err"
+test ! -f "$FAKE_STATE/present"
+
+run_case success pass 2
+grep -q 'assert=macos-pi-discovery PASS' "$TMP/success.out"
+test "$(cat "$TMP/success/guest/tmp/ah.rc")" = 0
+test -f "$FAKE_STATE/deleted" && test ! -f "$FAKE_STATE/present"
+
+if run_case timeout hang 1; then echo 'hung guest was accepted' >&2; exit 1; else rc=$?; fi
+test "$rc" = 124 && test -f "$TMP/timeout/timeout.txt"
+test "$(cat "$TMP/timeout/guest/tmp/ah.rc")" = 124
+test -f "$FAKE_STATE/deleted" && test ! -f "$FAKE_STATE/present"
+
+if run_case rejected host-key-fail 2; then echo 'rejected host key was accepted' >&2; exit 1; fi
+grep -q 'guest host key rejected' "$TMP/rejected.err"
+test -f "$FAKE_STATE/deleted" && test ! -f "$FAKE_STATE/present"
+
+rm -f "$FAKE_STATE"/{stopped,deleted,running-case}
+export RUN_DIR="$TMP/interrupted" FAKE_SSH_MODE=hang CASE_TIMEOUT=30
+bash "$ROOT/bin/run-macos-case.sh" macos-pi-discovery > "$TMP/interrupted.out" 2> "$TMP/interrupted.err" &
+probe_pid=$!
+ready=0
+for _ in $(seq 1 50); do
+    if [ -f "$FAKE_STATE/running-case" ]; then ready=1; break; fi
+    if ! kill -0 "$probe_pid" 2>/dev/null; then break; fi
+    sleep 0.1
+done
+test "$ready" = 1
+kill -TERM "$probe_pid"
+if wait "$probe_pid"; then echo 'interrupted guest was accepted' >&2; exit 1; fi
+probe_pid=
+test -f "$FAKE_STATE/deleted" && test ! -f "$FAKE_STATE/present"
+
+echo 'ok: macOS runner succeeds, times out, rejects host keys, and cleans up on interruption'
