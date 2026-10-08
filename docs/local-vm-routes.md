@@ -37,7 +37,7 @@ Tart 用例增加 `cases/<id>/display`，值为 `headed`；缺省为 `cli`。两
 
 示例 `macos-desktop-smoke` 在 guest 启动 Calculator、检查窗口数量并采集 guest 截图。它需要已准备好的 GUI seed；`macos-pi-discovery` 的 CLI 成功不能替代它。截图收集的 PNG 签名检查只防止缺失/无效响应，不自动判断黑屏或具体窗口是否可见。
 
-Linux vmspawn 用例的程序始终也在 VM 中；如需 Linux GUI，必须另外准备含 guest 桌面/Xvfb、被测应用及采集工具的镜像和用例，当前基准镜像不提供该桌面。`display=headed` 的自动截图契约仅属于 Tart 后端，不能把它当作 vmspawn 的 GUI API。
+Linux vmspawn 的程序始终也在 VM 中。当前镜像加入 Chromium/Xvfb，`browser-debug-headed` 在 guest 私有 X11 显示服务运行浏览器，检查窗口、DOM 并保存浏览器截图/HAR/trace；步骤见 `docs/browser-debug.md`。这不等于完整原生桌面；`display=headed` 的整桌面自动截图契约仅属于 Tart，不能把它当作 vmspawn 的 GUI API。
 
 ## 避免干扰宿主工作的措施与边界
 

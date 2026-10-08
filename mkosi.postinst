@@ -1,5 +1,5 @@
 #!/bin/sh
-# mkosi 的 postinst 脚本：在镜像里装两个 harness。
+# mkosi 的 postinst 脚本：在镜像里装两个 harness 与浏览器调试 CLI。
 #
 # 两个注意点（都是踩过的）：
 #   1. mkosi 的脚本沙箱**不是** chroot 进镜像，而是把镜像根挂在 /buildroot，
@@ -14,7 +14,8 @@ ROOT=/buildroot
 # 版本号同时出现在 README 与 task-5 的断言里。
 npm install --global --silent --include=optional --prefix "$ROOT/usr" \
     @anthropic-ai/claude-code@2.1.283 \
-    @earendil-works/pi-coding-agent@0.87.1
+    @earendil-works/pi-coding-agent@0.87.1 \
+    agent-browser@0.38.2
 
 # claude-code 的平台原生二进制由包内 install.cjs 落地。npm 在部分配置下不下载
 # optional 依赖，届时会出现 "claude native binary not installed"，所以显式补一次。

@@ -55,4 +55,16 @@ test "$(wc -l < "$TMP/runs" | tr -d ' ')" = 2
 if EXECUTION=invalid bash "$TMP/local/bin/test.sh" pi-turn > "$TMP/out" 2> "$TMP/err"; then
     echo 'invalid execution route was accepted' >&2; exit 1
 fi
-echo 'ok: local Linux dispatch and remote source checks work; incompatible routes are rejected'
+bash "$TMP/local/bin/test.sh" browser-debug-headless
+test "$(wc -l < "$TMP/runs" | tr -d ' ')" = 3
+printf '// different browser fixture\n' >> "$TMP/agent-harness-sandbox/bin/browser-debug/server.mjs"
+if bash "$TMP/local/bin/test.sh" browser-debug-headed > "$TMP/out" 2> "$TMP/err"; then
+    echo 'different remote browser fixture was accepted' >&2; exit 1
+fi
+grep -q 'local/remote source mismatch' "$TMP/err"
+test "$(wc -l < "$TMP/runs" | tr -d ' ')" = 3
+if EXECUTION=local FAKE_HOST_SYSTEM=Darwin bash "$TMP/local/bin/test.sh" browser-debug-headed > "$TMP/out" 2> "$TMP/err"; then
+    echo 'headed browser case fell back to macOS host execution' >&2; exit 1
+fi
+grep -q 'requires a Linux host' "$TMP/err"
+echo 'ok: local dispatch and remote source checks include browser helpers; host fallback is rejected'

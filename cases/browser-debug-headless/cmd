@@ -1,0 +1,1 @@
+timeout 240 bash /opt/browser-debug/exercise.sh headless

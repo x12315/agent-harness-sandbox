@@ -11,6 +11,7 @@
 | 工具 | bash、iproute2、socat、util-linux、kmod、tmux、jq、git、curl、ca-certificates |
 | 内核 | `linux` 7.2.7-arch1-1 + mkinitcpio 生成的 initramfs |
 | 被测对象 | **claude 2.1.283**、**pi 0.87.1**（版本在 `mkosi.postinst` 里钉死） |
+| 浏览器调试 | Chromium、Xvfb、xwininfo、DejaVu 字体；**agent-browser 0.38.2** 固定在 postinst。站点/操作通过 PUSH 送入，见 `docs/browser-debug.md` |
 | 带外 | `serial-getty@hvc0`/`ttyS0` 免密登入 root（skeleton 的 drop-in） |
 | 通道 | `vsock-mock-proxy.service`：把宿主 vsock 18788 桥成 guest 的 `127.0.0.1:18788` |
 | 网络 | **没有网卡**。不是策略禁止，是这台 VM 里不存在网络设备 |
@@ -23,7 +24,7 @@
 bin/sync.sh && ssh alpha 'bash ~/agent-harness-sandbox/bin/build-image.sh'
 ```
 
-构建期需要外网（pacman 装包 + npm 装两个 harness，见 `[Build] WithNetwork=yes`）；
+构建期需要外网（pacman 装包 + npm 装两个 harness 和固定版本 agent-browser，见 `[Build] WithNetwork=yes`）；
 **运行期不需要任何网络**。
 
 产物落在 alpha 的 `mkosi.output/`（不进同步树）：

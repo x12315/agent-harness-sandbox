@@ -1,0 +1,2 @@
+RAM=3G
+PUSH="bin/browser-debug/server.mjs:/opt/browser-debug/server.mjs bin/browser-debug/exercise.sh:/opt/browser-debug/exercise.sh bin/browser-debug/assert-evidence.mjs:/opt/browser-debug/assert-evidence.mjs"

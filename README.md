@@ -3,9 +3,9 @@
 给 agent harness（Claude Code / pi）用的多后端测试项目。按用例选择 VM，而不是让不同 VM 假装有相同的隔离能力：
 
 - **Linux vmspawn**：无网卡全 VM，vsock 模型 mock、串口和 QEMU monitor 带外取证；
-  每例从镜像临时启动并丢弃。适合请求形状、指令层和越界用例。
+  每例从镜像临时启动并丢弃。适合请求形状、指令层、越界及 guest 内浏览器调试用例。
 - **Tart（macOS / ARM64 Linux）**：从已配置的本地 VM 克隆；每例经 SSH 执行、取证、销毁。
-  默认 NAT **不是**物理 airgap。macOS CLI 已实测；Linux Tart 和 GUI 正向链路尚未实测通过。
+  默认 NAT **不是**物理 airgap。macOS CLI 已实测；Linux Tart 和 Tart GUI 正向链路尚未实测通过。
 
 **本机执行也在 VM 内，不在工作系统裸跑。** Linux 主机可选本机 vmspawn，Mac 可选本机 Tart；有头应用只使用 guest 桌面，runner 不打开宿主查看器。路由、GUI seed 和资源/网络边界见 [本机 VM 链路](docs/local-vm-routes.md)。
 
@@ -70,7 +70,7 @@ docs/                 决策记录、清理记录、盲区声明
 | Linux 用例：一台 Linux 主机（KVM 裸机，或开了嵌套虚拟化） | `/dev/kvm`、`/dev/vhost-vsock` 可读写；systemd ≥ 260（`--ephemeral`）；QEMU + OVMF。**不需要 root** |
 | macOS 用例：Apple Silicon Mac | macOS 13+、Tart、已配置且停机的本地 macOS 基底 VM；前置条件见 `docs/macos-tart.md` |
 | Linux 用例：一个 ssh 可达的别名 | 本文档统一写作 `alpha`，只是本机的别名；`REMOTE=<你的别名> bin/sync.sh` 可覆盖 |
-| Linux 构建期有外网 | mkosi 装包 + npm 装两个 harness；Linux 运行期 VM 无网卡。macOS 备好基底 VM 后，测试时默认 NAT |
+| Linux 构建期有外网 | mkosi 装包 + npm 装两个 harness 与固定版本的 agent-browser；Linux 运行期 VM 无网卡。macOS 备好基底 VM 后，测试时默认 NAT |
 | （可选）你自己的 `~/.agents/AGENTS.md` | 有它，指令层用例验证的是**你的真实指令层**；没有则用仓库里的中性夹具，用例照样全绿 |
 
 Linux vmspawn 可在本机 Linux 构建与运行，也可从 Mac 调远端；两种 Tart guest 在 Apple Silicon Mac 上运行。
@@ -111,7 +111,9 @@ EXECUTION=local bin/test.sh macos-pi-discovery
 还支持 `post.sh`/`env`）。Linux 产物在 alpha 的 `~/ahsb-build/runs/<case-id>/<run-id>/`，
 macOS 产物在 Mac 的 `~/ahsb-build/runs/<case-id>/<run-id>/`，均在同步树之外。
 两个后端都写 `guest/tmp/ah.{out,err,rc}`；Linux 额外写串口、monitor、mock 证据，
-macOS 写 VM 日志。`bin/acceptance.sh` 目前仍只验收 Linux。
+macOS 写 VM 日志。Linux `console.txt` 是可能被 tmux 回滚截断的快照，完整串口字节在 `vm.log`，归档由它解码；已存在的 `/tmp/ah-artifacts/` 也会收回。`bin/acceptance.sh` 目前仍只验收 Linux。
+
+浏览器自测使用独立的小型本地站点：`browser-debug-headless` 与 `browser-debug-headed`。有头浏览器只在 guest 私有 Xvfb 中显示，检查 X11 窗口与 DOM、状态恢复、故障诊断、PNG/HAR/trace；Linux 宿主断言需要 Node.js。准备、运行与未覆盖项见 [浏览器调试用例](docs/browser-debug.md)。
 
 Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `dir=` 为准。显式设置 Linux `RUN_DIR` 时必须指向不存在的目录，已有目录返回 2，不覆盖。会话名也按调用进程区分，但共享 mock/资源的并发正确性尚未验收；这不等于支持并行跑完整套件。
 
@@ -133,7 +135,7 @@ Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `
 
 - Linux 设计上排除**真实网络层**；macOS 默认 NAT 可联网，却没有 Linux 的物理 airgap。
   Tart 的 Softnet/仅主机网络模式需要宿主 root/SUID，本项目不自动申请或启用。
-- Linux vmspawn 基准镜像没有桌面；Tart 的 `display=headed` 只在已准备好的 guest 桌面运行。有头截图契约及失败拒绝已实现，但**真实 GUI 正向与 iTerm 用例仍未验收**。
+- Linux 浏览器用例提供 guest 私有 Xvfb，不等于完整原生桌面。Tart 的 `display=headed` 仍需已准备好的 guest 桌面；其截图契约及失败拒绝已实现，但**Tart GUI 正向与 iTerm 用例仍未验收**。
 - **多节点**与「让别的 agent 通过 API 自助申请沙盒」仍不支持。
 
 完整盲区清单见 `docs/BLINDSPOTS.md`。
@@ -151,6 +153,7 @@ Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `
 | `docs/BLINDSPOTS.md` | Linux 盲区与 macOS 后端的不同保证 |
 | `docs/macos-tart.md` | macOS 基底前置条件、CLI 调用及隔离边界 |
 | `docs/local-vm-routes.md` | 本机 Linux/macOS 路由、guest 有头测试和不干扰工作桌面的边界 |
+| `docs/browser-debug.md` | 独立浏览器站点、无头/客体 Xvfb、有状态操作与 PNG/HAR/trace 证据 |
 | `docs/golden-image.md` | golden 镜像定义与验收 |
 | `docs/host-prereqs.md` | alpha 前置条件、两处临时 hack、环境坑清单 |
 | `docs/alpha-cleanup.md` | 上一版（microsandbox）产物的回收记录 |

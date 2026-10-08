@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 #   bin/acceptance.sh claude-turn pi-turn # 只跑这几条（迭代时用这个，快得多）
 #   SKIP_BUILD=1 bin/acceptance.sh ...    # 跳过镜像构建（镜像/配置没变时）
 #   PRIVDROP=1 bin/acceptance.sh          # 零特权跑法（推荐）
-ALL_CASES="claude-turn pi-turn agents-md-honored agents-md-ignored overwrite-bin-bash disk-fill port-scan out-of-band-monitor"
+ALL_CASES="claude-turn pi-turn agents-md-honored agents-md-ignored overwrite-bin-bash disk-fill port-scan out-of-band-monitor browser-debug-headless browser-debug-headed"
 if [ "$#" -gt 0 ]; then CASES="$*"; else CASES="$ALL_CASES"; fi
 
 ts() { date -u +%H:%M:%S; }

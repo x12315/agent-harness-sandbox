@@ -23,7 +23,7 @@
 
 | 未覆盖 | 说明 |
 | --- | --- |
-| Linux GUI / computer-use / 浏览器 | vmspawn 基准镜像没有 X/Wayland、浏览器或 VNC；Tart guest 有头执行/截图契约已实现，但 Linux Tart 和真实 GUI 正向尚未验收，准备与边界见 `docs/local-vm-routes.md` |
+| 完整原生桌面 / computer-use / 其他浏览器 | 新增 Linux Chromium + 私有 Xvfb 的确定性 CDP 调试用例，见 `docs/browser-debug.md`；不覆盖 GNOME/Wayland、其他浏览器或 macOS。Linux Tart 和 Tart GUI 正向仍未验收 |
 | 多节点与并发 | 全部用例串行。宿主上并发跑多条用例时的相互影响、资源争抢、端口冲突都没测 |
 | 让 agent 自助申请沙盒的 API | 现在是 CLI。要做要走 Incus restricted project / E2B / agent-substrate，且与"权限收敛到非 root 用户"有张力 |
 | 资源耗尽（CPU / 内存 / PID 打满） | DSec 记录过递归 `grep /proc/kpagecgroup`、`yes` 写满几十 GB。我们只做了**有界**的磁盘填充 |
@@ -41,8 +41,7 @@
   多步规划全部不可测。
 - **guest 是 Arch。** 不代表使用者真实的运行环境（不同发行版、不同 glibc、不同 node 版本
   可能有不同故障）。
-- **产物回传走串口 base64，受 tmux history 上限约束**（跑之前把 `history-limit` 抬到 10 万行）。
-  超大产物（几十 MB 的会话记录）会被截断，这个边界没有测过。
+- **产物回传仍走串口 base64**。归档已改从完整 `vm.log` 字节解码，不依赖 tmux 回滚；新建 server 的默认 2000 行可能截断 `console.txt`。超大产物的串口吞吐、磁盘占用和耗时上限仍未验收。
 - **每条用例一个全新 VM**：拿到的是"干净起点"的结论，拿不到"被污染过的环境里会怎样"。
 
 ## 四、权限模型：测试身份就是现有的非 root 账号
@@ -84,5 +83,5 @@
 | Tart 从已配置基底克隆、SSH 执行并删除临时 VM | 从裸 IPSW 无人值守建基底；也不继承 Linux 的 airgap、vsock mock、串口或 NoNewPrivs |
 | guest 原生网络行为（默认 NAT） | 宿主网络隔离：guest 可访问外网和部分宿主服务 |
 
-macOS 测试用例没有宿主侧 CPU/内存上限，基底 VM 保留在本机。启用 Softnet 所需的宿主
+Tart runner 为本次克隆设置默认 2 CPU / 4096 MiB，但没有宿主级 CPU/内存硬配额，基底 VM 保留在本机。启用 Softnet 所需的宿主
 root/SUID 权限尚未授权；当前走零特权 NAT，不将网络隔离写入通过结论。

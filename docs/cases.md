@@ -48,6 +48,12 @@ assert=pi-turn PASS
 **请求形状**（harness 把什么发给了模型）、**自身状态**（harness 在磁盘上留下了什么）、
 **退出码与输出**。这样即使 mock 的应答文案改了，断言依然站得住。
 
+## 独立浏览器调试用例
+
+`browser-debug-headless` 与 `browser-debug-headed` 都走 Linux vmspawn，使用仓库自己的 Node 小站点。后者只在 guest 私有 Xvfb 运行 Chromium；两者验证 CDP、导航、DOM/表单、标签页、独立新 profile 的登录态恢复、HTTP/transport 故障、定位超时和 PNG/HAR/trace。没有借用其他应用项目，也不调用模型。
+
+夹具在 `bin/browser-debug/`，经 `env` 的 PUSH 送入 guest。Linux runner 会额外归档 `/tmp/ah-artifacts/`，浏览器证据位于本次 `dir=` 的 `guest/tmp/ah-artifacts/browser-debug/`。依赖、真实取证标准及未覆盖项见 `docs/browser-debug.md`；Tart GUI 的通过结论不能由此替代。
+
 ## 加一条新用例
 
 ```bash

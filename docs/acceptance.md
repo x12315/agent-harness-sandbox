@@ -2,6 +2,8 @@
 
 以下是 2026-09-28 的历史记录。当前 runner 已改为 `runs/<id>/<run-id>/`，每次验收保留历史，不再删除 `runs/<id>/`；以实际输出的 `dir=` 找本次证据。共享环境先协调，或在独立 checkout/产物目录验收，不覆盖别人正在使用的目录。
 
+当前默认验收列表已增加 `browser-debug-headless` / `browser-debug-headed`，共十条；下面八条是历史结果，新增浏览器证据另见 `docs/browser-debug.md`，不能自动计入历史通过数。
+
 按 README 的步骤**从零**跑完整流程：删掉镜像目录 → 重新同步 → 构建 golden 镜像 →
 顺序跑全部用例。全程非特权（`PRIVDROP=1`）。
 
