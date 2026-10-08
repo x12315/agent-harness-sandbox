@@ -52,8 +52,14 @@ if [ "${FAKE_SSH_MODE:-}" = desktop-blocked ]; then
     echo 'guest Aqua desktop not ready; configure login in the private seed' >&2
     exit 42
 fi
-if [ "${FAKE_SSH_MODE:-}" = desktop-ready ]; then
-    printf 'guestCalculatorWindows=1\n==AH_GUI_BEGIN==\n'
+if [[ "${FAKE_SSH_MODE:-}" = *-ready ]]; then
+    case "$FAKE_SSH_MODE" in
+        desktop-ready) printf 'guestCalculatorWindows=1\n' ;;
+        iterm-ready) printf 'guestITermWindows=2\nguestITermPiVersion=0.87.1\n' ;;
+        browser-ready) printf 'guestBrowserMode=headless PASS\nguestBrowserMode=headed PASS\nguestBrowserWindows=1\n' ;;
+        *) exit 2 ;;
+    esac
+    printf '==AH_GUI_BEGIN==\n'
     printf 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS1EAAAAASUVORK5CYII=\n'
     printf '==AH_GUI_END==\n'
     exit 0
@@ -118,7 +124,54 @@ FAKE_CASE_ID=macos-desktop-smoke run_case gui-success desktop-ready 2
 grep -q 'assert=macos-desktop-smoke PASS' "$TMP/gui-success.out"
 test -s "$TMP/gui-success/gui.png"
 grep -q 'stat -f %Su /dev/console' "$FAKE_STATE/guest-input"
+grep -q 'for attempt in $(seq 1 120)' "$FAKE_STATE/guest-input"
 grep -q 'screencapture -x' "$FAKE_STATE/guest-input"
+# Execute only the generated readiness block with fake guest console/Aqua probes.
+# Never execute the guest application code or query the host GUI.
+awk '/^aqua_ready=0$/{active=1} active{print} /^if \[ "\$aqua_ready" != 1 \]; then/{exit}' \
+    "$FAKE_STATE/guest-input" > "$TMP/aqua-probe.sh"
+(
+    fake_guest_stat() { id -un; }
+    fake_guest_launchctl() {
+        local count=0
+        [ ! -f "$TMP/aqua-count" ] || read -r count < "$TMP/aqua-count"
+        count=$((count + 1))
+        printf '%s\n' "$count" > "$TMP/aqua-count"
+        [ "$count" -ge 3 ]
+    }
+    sleep() { :; }
+    probe=$(< "$TMP/aqua-probe.sh")
+    probe=${probe//\/usr\/bin\/stat/fake_guest_stat}
+    probe=${probe//\/bin\/launchctl/fake_guest_launchctl}
+    eval "$probe"
+    test "$aqua_ready" = 1
+    test "$(< "$TMP/aqua-count")" = 3
+)
+if (
+    fake_guest_stat() { printf 'root\n'; }
+    fake_guest_launchctl() { return 1; }
+    sleep() { :; }
+    probe=$(< "$TMP/aqua-probe.sh")
+    probe=${probe//\/usr\/bin\/stat/fake_guest_stat}
+    probe=${probe//\/bin\/launchctl/fake_guest_launchctl}
+    eval "$probe"
+); then echo 'permanently unavailable Aqua was accepted' >&2; exit 1; else test "$?" = 42; fi
+grep -q 'CGWindowListCopyWindowInfo' "$FAKE_STATE/guest-input"
+if grep -q 'tell application "Calculator" to count windows' "$FAKE_STATE/guest-input"; then
+    echo 'unsupported Calculator AppleScript window query returned' >&2; exit 1
+fi
+FAKE_CASE_ID=macos-iterm-smoke run_case iterm-gui iterm-ready 2
+grep -q 'assert=macos-iterm-smoke PASS' "$TMP/iterm-gui.out"
+FAKE_CASE_ID=macos-browser-smoke run_case browser-gui browser-ready 2
+grep -q 'assert=macos-browser-smoke PASS' "$TMP/browser-gui.out"
+grep -q 'Google Chrome for Testing' "$FAKE_STATE/guest-input"
+grep -q 'result.data.text' "$FAKE_STATE/guest-input"
+# A single browser mode or absent GUI evidence must not pass the host assertion.
+grep -v 'guestBrowserMode=headed' "$TMP/browser-gui/guest/tmp/ah.out" > "$TMP/incomplete-browser.out"
+cp "$TMP/incomplete-browser.out" "$TMP/browser-gui/guest/tmp/ah.out"
+if bash "$ROOT/cases/macos-browser-smoke/assert.sh" "$TMP/browser-gui" >/dev/null 2>&1; then
+    echo 'incomplete browser modes were accepted' >&2; exit 1
+fi
 mkdir -p "$TMP/linux-fixture/bin" "$TMP/linux-fixture/cases/linux-headed"
 cp "$ROOT/bin/run-tart-case.sh" "$TMP/linux-fixture/bin/"
 printf 'linux-tart\n' > "$TMP/linux-fixture/cases/linux-headed/target"

@@ -1,0 +1,28 @@
+set -eu
+job=$(mktemp -d)
+trap 'rm -rf "$job"' EXIT
+command -v agent-browser >/dev/null
+url=$(node -e 'const html=`<!doctype html><title>Sandbox Browser Smoke</title><h1>Guest Browser Smoke</h1><label>Message<input id="message"></label><button id="echo">Echo message</button><pre id="result">No message</pre><script>document.getElementById("echo").onclick=()=>{document.getElementById("result").textContent=document.getElementById("message").value;};</script>`; process.stdout.write("data:text/html,"+encodeURIComponent(html))')
+for mode in headless headed; do
+    session="ahsb-macos-$mode-$$"
+    flags=
+    [ "$mode" != headed ] || flags=--headed
+    agent-browser --session "$session" $flags --json open "$url" > "$job/open.json"
+    agent-browser --session "$session" --json snapshot -i > "$job/snapshot.json"
+    agent-browser --session "$session" --json find label Message fill "sandbox-$mode-ready" > "$job/fill.json"
+    agent-browser --session "$session" --json find role button click --name 'Echo message' > "$job/click.json"
+    agent-browser --session "$session" --json wait --text "sandbox-$mode-ready" > "$job/wait.json"
+    agent-browser --session "$session" --json get text '#result' > "$job/result.json"
+    node -e 'const fs=require("node:fs"); for(const name of ["open","snapshot","fill","click","wait","result"]) { const result=JSON.parse(fs.readFileSync(process.argv[1]+"/"+name+".json","utf8")); if(!result.success) throw Error(name+" failed"); if(name==="result" && result.data.text!=="sandbox-"+process.argv[2]+"-ready") throw Error("unexpected DOM result"); console.log(JSON.stringify({mode:process.argv[2],operation:name,result})); }' "$job" "$mode"
+    printf 'guestBrowserMode=%s PASS\n' "$mode"
+    [ "$mode" != headless ] || agent-browser --session "$session" --json close > "$job/close.json"
+done
+windows=$(/usr/bin/osascript -l JavaScript <<'JXA'
+ObjC.import('CoreGraphics');
+const windows = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1, 0)));
+String(windows.filter(w => w.kCGWindowOwnerName === 'Google Chrome for Testing' && w.kCGWindowLayer === 0 &&
+    w.kCGWindowName === 'Sandbox Browser Smoke' && w.kCGWindowAlpha > 0).length);
+JXA
+) || exit 1
+[ "$windows" -gt 0 ] || { echo 'guest headed browser window missing' >&2; exit 1; }
+printf 'guestBrowserWindows=%s\n' "$windows"

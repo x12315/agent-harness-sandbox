@@ -54,6 +54,19 @@ assert=pi-turn PASS
 
 夹具在 `bin/browser-debug/`，经 `env` 的 PUSH 送入 guest。Linux runner 会额外归档 `/tmp/ah-artifacts/`，浏览器证据位于本次 `dir=` 的 `guest/tmp/ah-artifacts/browser-debug/`。依赖、真实取证标准及未覆盖项见 `docs/browser-debug.md`；Tart GUI 的通过结论不能由此替代。
 
+## macOS 基底 smoke
+
+以下都通过 `bin/test.sh` 在本机 Tart 私有克隆中运行；后三条声明 `display=headed`，只操作 guest 桌面：
+
+| 用例 | 检查 |
+| --- | --- |
+| `macos-pi-discovery` | Node/pi 登录 shell 与 RPC 命令发现 |
+| `macos-desktop-smoke` | Calculator 可见窗口、System Events 输入和截图 |
+| `macos-iterm-smoke` | 新建 iTerm 窗口，在真实终端执行 pi 并检查版本/退出码 |
+| `macos-browser-smoke` | 独立 data 页面，无头/有头的 label/role 操作和 DOM，真实 Chrome 窗口 |
+
+准备、两轮新克隆实测及未覆盖项见 [macOS GUI 基底](macos-gui-seed.md)。这些 smoke 不等于 pi 会话 clone/fork 或完整浏览器故障调试通过。
+
 ## 加一条新用例
 
 ```bash

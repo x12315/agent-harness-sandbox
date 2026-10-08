@@ -126,8 +126,10 @@ if [ "$DISPLAY_MODE" = headed ]; then
     {
         printf '%s\n' 'umask 077' 'job=$(mktemp -d)' 'trap '\''rm -rf "$job"'\'' EXIT'
         if [ "$GUEST_OS" = darwin ]; then
-            printf '%s\n' 'if [ "$(/usr/bin/stat -f %Su /dev/console)" != "$(id -un)" ] || ! /bin/launchctl print "gui/$(id -u)" >/dev/null 2>&1; then'
-            printf '%s\n' 'echo "guest Aqua desktop not ready; configure login in the private seed" >&2; exit 42; fi'
+            printf '%s\n' 'aqua_ready=0' 'for attempt in $(seq 1 120); do'
+            printf '%s\n' 'if [ "$(/usr/bin/stat -f %Su /dev/console)" = "$(id -un)" ] && /bin/launchctl print "gui/$(id -u)" >/dev/null 2>&1; then aqua_ready=1; break; fi'
+            printf '%s\n' 'sleep 0.25' 'done'
+            printf '%s\n' 'if [ "$aqua_ready" != 1 ]; then echo "guest Aqua desktop not ready; configure login in the private seed" >&2; exit 42; fi'
         else
             printf 'export DISPLAY=%s\n' "$GUEST_DISPLAY"
             printf '%s\n' 'if ! command -v xdpyinfo >/dev/null || ! xdpyinfo >/dev/null 2>&1 || ! command -v import >/dev/null; then'

@@ -5,7 +5,7 @@
 - **Linux vmspawn**：无网卡全 VM，vsock 模型 mock、串口和 QEMU monitor 带外取证；
   每例从镜像临时启动并丢弃。适合请求形状、指令层、越界及 guest 内浏览器调试用例。
 - **Tart（macOS / ARM64 Linux）**：从已配置的本地 VM 克隆；每例经 SSH 执行、取证、销毁。
-  默认 NAT **不是**物理 airgap。macOS CLI 已实测；Linux Tart 和 Tart GUI 正向链路尚未实测通过。
+  默认 NAT **不是**物理 airgap。macOS CLI、原生 GUI 与浏览器 smoke 已在私有基底的新克隆通过；Linux Tart 正向仍待实测。
 
 **本机执行也在 VM 内，不在工作系统裸跑。** Linux 主机可选本机 vmspawn，Mac 可选本机 Tart；有头应用只使用 guest 桌面，runner 不打开宿主查看器。路由、GUI seed 和资源/网络边界见 [本机 VM 链路](docs/local-vm-routes.md)。
 
@@ -129,13 +129,14 @@ Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `
 - [x] task-8 Linux 权限收敛、清理与验收报告（见 `docs/acceptance.md`、`docs/BLINDSPOTS.md`）
 - [x] 多后端统一入口与 macOS pi CLI 用例；Linux `pi-turn`、`claude-turn` 和 macOS `macos-pi-discovery` 已分别在对应后端通过（见 `docs/macos-tart.md`）
 - [ ] 从裸 IPSW 无人值守制作 macOS 基底镜像（Setup Assistant 自动化尚未稳定）
-- [ ] macOS iTerm GUI 窗口用例及断言
+- [x] 私有 macOS GUI 基底、新克隆的 Calculator/iTerm/浏览器 smoke；四条用例连续两轮通过（见 `docs/macos-gui-seed.md`）
+- [ ] pi `/clone-window`、`/fork-window` 的 iTerm GUI 会话验收
 
 ## 已知盲区
 
 - Linux 设计上排除**真实网络层**；macOS 默认 NAT 可联网，却没有 Linux 的物理 airgap。
   Tart 的 Softnet/仅主机网络模式需要宿主 root/SUID，本项目不自动申请或启用。
-- Linux 浏览器用例提供 guest 私有 Xvfb，不等于完整原生桌面。Tart 的 `display=headed` 仍需已准备好的 guest 桌面；其截图契约及失败拒绝已实现，但**Tart GUI 正向与 iTerm 用例仍未验收**。
+- Linux 浏览器用例提供 guest 私有 Xvfb，不等于完整原生桌面。Tart 的 `display=headed` 仍需已准备好的 guest 桌面；本机 macOS GUI smoke 已通过，但不证明 pi 会话 clone/fork、iTerm 自身 AppleScript API 或 Linux Tart GUI。
 - **多节点**与「让别的 agent 通过 API 自助申请沙盒」仍不支持。
 
 完整盲区清单见 `docs/BLINDSPOTS.md`。
@@ -152,6 +153,7 @@ Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `
 | `docs/acceptance.md` | Linux 从零复现的验收记录（环境、哈希、8 条用例结果） |
 | `docs/BLINDSPOTS.md` | Linux 盲区与 macOS 后端的不同保证 |
 | `docs/macos-tart.md` | macOS 基底前置条件、CLI 调用及隔离边界 |
+| `docs/macos-gui-seed.md` | 私有 GUI 基底准备、授权边界、新克隆的 CLI/原生窗口/浏览器验收 |
 | `docs/local-vm-routes.md` | 本机 Linux/macOS 路由、guest 有头测试和不干扰工作桌面的边界 |
 | `docs/browser-debug.md` | 独立浏览器站点、无头/客体 Xvfb、有状态操作与 PNG/HAR/trace 证据 |
 | `docs/golden-image.md` | golden 镜像定义与验收 |

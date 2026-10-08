@@ -23,7 +23,7 @@
 
 | 未覆盖 | 说明 |
 | --- | --- |
-| 完整原生桌面 / computer-use / 其他浏览器 | 新增 Linux Chromium + 私有 Xvfb 的确定性 CDP 调试用例，见 `docs/browser-debug.md`；不覆盖 GNOME/Wayland、其他浏览器或 macOS。Linux Tart 和 Tart GUI 正向仍未验收 |
+| 完整原生桌面 / computer-use / 其他浏览器 | 新增 Linux Chromium + 私有 Xvfb 的确定性 CDP 调试用例，见 `docs/browser-debug.md`；不覆盖 GNOME/Wayland、其他浏览器或 macOS。macOS Tart 的 Calculator/iTerm/Chrome 基底 smoke 已实测；Linux Tart 正向仍未验收 |
 | 多节点与并发 | 全部用例串行。宿主上并发跑多条用例时的相互影响、资源争抢、端口冲突都没测 |
 | 让 agent 自助申请沙盒的 API | 现在是 CLI。要做要走 Incus restricted project / E2B / agent-substrate，且与"权限收敛到非 root 用户"有张力 |
 | 资源耗尽（CPU / 内存 / PID 打满） | DSec 记录过递归 `grep /proc/kpagecgroup`、`yes` 写满几十 GB。我们只做了**有界**的磁盘填充 |
@@ -79,8 +79,8 @@
 
 | 能测 | 仍不能据此断言 |
 | --- | --- |
-| 原生 macOS 上的 agent CLI（已有 `macos-pi-discovery`） | iTerm GUI 窗口行为；还没有对应的窗口与会话断言 |
-| Tart 从已配置基底克隆、SSH 执行并删除临时 VM | 从裸 IPSW 无人值守建基底；也不继承 Linux 的 airgap、vsock mock、串口或 NoNewPrivs |
+| 原生 macOS CLI、Calculator UI、iTerm 新窗口运行 pi、Chrome 无头/有头 smoke；见 `docs/macos-gui-seed.md` | pi 会话 clone/fork、iTerm 自身 AppleScript API、完整 macOS 浏览器故障调试 |
+| Tart 从已配置基底克隆、SSH 执行并删除临时 VM；本机 GUI/TCC 保留经新克隆验收 | 裸 IPSW 全无人值守初始化、跨 Mac GUI/TCC 迁移、升级/新增应用永远免授权；也不继承 Linux 的 airgap、vsock mock、串口或 NoNewPrivs |
 | guest 原生网络行为（默认 NAT） | 宿主网络隔离：guest 可访问外网和部分宿主服务 |
 
 Tart runner 为本次克隆设置默认 2 CPU / 4096 MiB，但没有宿主级 CPU/内存硬配额，基底 VM 保留在本机。启用 Softnet 所需的宿主

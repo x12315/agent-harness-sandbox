@@ -133,8 +133,8 @@ Linux 产物清单（都在 alpha 的 `~/ahsb-build/runs/<case-id>/<run-id>/`）
 ## 后端边界
 
 Linux 无网卡、vsock mock、串口抢救；macOS Tart 有 NAT 网络、通过 SSH 取证，适合原生
-GUI 测试，但**没有 Linux 的物理 airgap**。macOS CLI 已实测；新增有头用例的真实正向链路
-仍缺 GUI seed，没有声称 iTerm GUI 已验收。macOS 基底前置条件、机密分界与运行方法见 `docs/macos-tart.md`；
+GUI 测试，但**没有 Linux 的物理 airgap**。macOS 私有 GUI 基底已通过两轮新克隆的 CLI、Calculator、iTerm 窗口和浏览器 smoke；
+pi 会话 clone/fork 与 iTerm 自身 AppleScript API 不在通过范围。macOS 基底前置条件、机密分界与运行方法见 `docs/macos-tart.md`；
 Linux 的盲区与残余风险见 `docs/BLINDSPOTS.md`。
 
 ## 深水区（按需读，不要一开始全读）
@@ -150,4 +150,5 @@ Linux 的盲区与残余风险见 `docs/BLINDSPOTS.md`。
 | `docs/acceptance.md` | 看验收证据、复现标准流程 |
 | `docs/BLINDSPOTS.md` | 判断 Linux 无网卡后端能不能测、macOS 新增覆盖什么 |
 | `docs/macos-tart.md` | 构建/运行 macOS VM、权限与隔离边界 |
+| `docs/macos-gui-seed.md` | 准备/更新 GUI seed、排查授权与首次运行弹窗、冻结并验收新克隆 |
 | `docs/local-vm-routes.md` | 本机执行、Linux Tart、有头模式、guest 准备与宿主干扰边界 |

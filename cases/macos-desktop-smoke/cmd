@@ -1,4 +1,22 @@
-/usr/bin/open -a Calculator
-windows=$(/usr/bin/osascript -e 'tell application "Calculator" to count windows') || exit 1
+/usr/bin/open -a Calculator || exit 1
+windows=$(/usr/bin/osascript -l JavaScript <<'JXA'
+ObjC.import('CoreGraphics');
+ObjC.import('Foundation');
+let count = 0;
+for (let attempt = 0; attempt < 40; attempt++) {
+    const windows = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1, 0)));
+    count = windows.filter(w => w.kCGWindowOwnerName === 'Calculator' && w.kCGWindowLayer === 0 &&
+        w.kCGWindowAlpha > 0 && w.kCGWindowBounds.Width > 0 && w.kCGWindowBounds.Height > 0).length;
+    if (count > 0) break;
+    $.NSThread.sleepForTimeInterval(0.25);
+}
+String(count);
+JXA
+) || exit 1
 [ "$windows" -gt 0 ] || exit 1
+/usr/bin/osascript -e 'with timeout of 5 seconds' \
+    -e 'tell application "System Events" to tell process "Calculator" to set frontmost to true' \
+    -e 'tell application "System Events" to key code 53' \
+    -e 'tell application "System Events" to keystroke "7+5="' \
+    -e 'end timeout' || exit 1
 printf 'guestCalculatorWindows=%s\n' "$windows"

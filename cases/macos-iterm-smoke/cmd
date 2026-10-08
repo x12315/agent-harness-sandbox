@@ -1,0 +1,51 @@
+set -eu
+job=$(mktemp -d)
+trap 'rm -rf "$job"' EXIT
+app="$HOME/Applications/iTerm.app"
+[ -d "$app" ] || app=/Applications/iTerm.app
+[ -d "$app" ] || { echo 'guest iTerm is missing' >&2; exit 1; }
+pi_path=$(command -v pi)
+node_path=$(command -v node)
+expected=$(pi --version)
+/usr/bin/open "$app"
+line="PATH='${node_path%/*}':\$PATH '$pi_path' --version > '$job/pi-version'; echo \$? > '$job/rc'; cat '$job/pi-version'"
+windows=$(/usr/bin/osascript - "$line" <<'APPLESCRIPT'
+on run argv
+    with timeout of 20 seconds
+        tell application "System Events"
+            repeat 40 times
+                if exists process "iTerm2" then
+                    tell process "iTerm2"
+                        set frontmost to true
+                        if frontmost and (count windows) > 0 then exit repeat
+                    end tell
+                end if
+                delay 0.25
+            end repeat
+            tell process "iTerm2" to set beforeCount to count windows
+            keystroke "n" using command down
+            repeat 40 times
+                tell process "iTerm2"
+                    set frontmost to true
+                    set afterCount to count windows
+                    set isFrontmost to frontmost
+                end tell
+                if isFrontmost and afterCount > beforeCount then exit repeat
+                delay 0.25
+            end repeat
+            if not isFrontmost or afterCount <= beforeCount then error "guest iTerm new window not ready"
+            keystroke (item 1 of argv)
+            key code 36
+            return afterCount
+        end tell
+    end timeout
+end run
+APPLESCRIPT
+) || exit 1
+for attempt in $(seq 1 100); do
+    [ ! -f "$job/rc" ] || break
+    sleep 0.2
+done
+[ -f "$job/rc" ] && [ "$(cat "$job/rc")" = 0 ] || { echo 'guest iTerm command did not succeed' >&2; exit 1; }
+[ "$(cat "$job/pi-version")" = "$expected" ] || exit 1
+printf 'guestITermWindows=%s\nguestITermPiVersion=%s\n' "$windows" "$expected"
