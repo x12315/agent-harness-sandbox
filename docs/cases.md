@@ -4,7 +4,7 @@
 `cases/macos-pi-discovery/` 和 `docs/macos-tart.md`。两者都可从 Mac 调用 `bin/test.sh <id>`，
 公共取证文件是 `guest/tmp/ah.{out,err,rc}`，其余证据依后端而定。
 
-一条 Linux 用例 = `cases/<id>/` 目录里的定义文件（**定义在仓库，产物在 $OUT/runs/<id>/**，
+一条 Linux 用例 = `cases/<id>/` 目录里的定义文件（**定义在仓库，产物在 $OUT/runs/<id>/<run-id>/**，
 因为 `bin/sync.sh` 是整目录替换，产物留在仓库树里会被下一次同步连根删掉）：
 
 | 文件 | 作用 |
@@ -52,8 +52,9 @@ assert=pi-turn PASS
 ```bash
 mkdir cases/<新 id>
 printf '%s\n' '<在 guest 里跑的命令>' > cases/<新 id>/cmd
-$EDITOR cases/<新 id>/assert.sh   # 用 jq 读传入的那个产物目录（$OUT/runs/<新 id>）
-bin/sync.sh && bin/test.sh <新 id>  # Linux；macOS 用例无需 sync，先按 docs/macos-tart.md 构建镜像
+$EDITOR cases/<新 id>/assert.sh   # 用 jq 读传入的那个产物目录（$OUT/runs/<新 id>/<run-id>）
+# 确认远端无人使用后才 sync；否则另建匹配 checkout 并以 DEST 选择它。
+bin/sync.sh && bin/test.sh <新 id>  # Linux；macOS 无需 sync，先准备已配置基底
 ```
 
 ## 踩过的三个坑（都体现在 runner 里）

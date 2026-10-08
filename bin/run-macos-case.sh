@@ -15,7 +15,15 @@ CASE_DIR=$ROOT/cases/$CASE_ID
 CASE_TIMEOUT=${CASE_TIMEOUT:-300}
 [[ $CASE_TIMEOUT =~ ^[1-9][0-9]*$ ]] || { echo 'CASE_TIMEOUT must be a positive number of seconds' >&2; exit 2; }
 for tool in tart ssh awk; do command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 2; }; done
-[ -f "$TART_SSH_KEY" ] && [ -f "$TART_KNOWN_HOSTS" ] || { echo 'missing guest SSH key or pinned host key' >&2; exit 2; }
+[ -f "$TART_SSH_KEY" ] && [ -r "$TART_SSH_KEY" ] && [ -s "$TART_SSH_KEY" ] || {
+    echo "guest SSH private key missing, empty, or unreadable: $TART_SSH_KEY" >&2; exit 2;
+}
+[ -f "$TART_KNOWN_HOSTS" ] && [ -r "$TART_KNOWN_HOSTS" ] && [ -s "$TART_KNOWN_HOSTS" ] || {
+    echo "pinned guest host public key file missing, empty, or unreadable: $TART_KNOWN_HOSTS" >&2; exit 2;
+}
+awk '$1 !~ /^#/ && $2 == "ssh-ed25519" && NF >= 3 {found=1} END {exit !found}' "$TART_KNOWN_HOSTS" || {
+    echo "no pinned ED25519 guest host public key in: $TART_KNOWN_HOSTS" >&2; exit 2;
+}
 tart get "$TART_BASE_VM" >/dev/null || { echo "missing base VM: $TART_BASE_VM" >&2; exit 2; }
 [ "$(tart get "$TART_BASE_VM" | awk 'NR == 2 {print $NF}')" = stopped ] || {
     echo "base VM must be stopped: $TART_BASE_VM" >&2; exit 2;

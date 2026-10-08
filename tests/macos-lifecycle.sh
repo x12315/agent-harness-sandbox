@@ -11,7 +11,7 @@ cleanup() {
 trap cleanup EXIT
 mkdir -p "$TMP/bin" "$TMP/state"
 printf 'seed ssh-ed25519 test-key\n' > "$TMP/known_hosts"
-: > "$TMP/id_ed25519"
+printf 'test-only-private-key-placeholder\n' > "$TMP/id_ed25519"
 
 cat > "$TMP/bin/tart" <<'EOF'
 #!/usr/bin/env bash
@@ -59,6 +59,23 @@ run_case() {
     export RUN_DIR="$TMP/$name" FAKE_SSH_MODE=$mode CASE_TIMEOUT=$timeout
     bash "$ROOT/bin/run-macos-case.sh" macos-pi-discovery > "$TMP/$name.out" 2> "$TMP/$name.err"
 }
+
+if TART_SSH_KEY="$TMP/missing-private" run_case missing-private pass 2; then
+    echo 'missing private key was accepted' >&2; exit 1
+fi
+grep -q 'guest SSH private key missing' "$TMP/missing-private.err"
+test ! -f "$FAKE_STATE/present"
+if TART_KNOWN_HOSTS="$TMP/missing-public" run_case missing-public pass 2; then
+    echo 'missing pinned public key was accepted' >&2; exit 1
+fi
+grep -q 'pinned guest host public key file missing' "$TMP/missing-public.err"
+test ! -f "$FAKE_STATE/present"
+printf 'seed ssh-rsa invalid-placeholder\n' > "$TMP/wrong-key-type"
+if TART_KNOWN_HOSTS="$TMP/wrong-key-type" run_case wrong-type pass 2; then
+    echo 'missing pinned ED25519 key was accepted' >&2; exit 1
+fi
+grep -q 'no pinned ED25519 guest host public key' "$TMP/wrong-type.err"
+test ! -f "$FAKE_STATE/present"
 
 if run_case invalid pass 0; then echo 'invalid timeout was accepted' >&2; exit 1; fi
 grep -q 'CASE_TIMEOUT must be a positive number' "$TMP/invalid.err"

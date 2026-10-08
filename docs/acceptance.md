@@ -1,5 +1,7 @@
 # 验收记录（task-8）
 
+以下是 2026-09-28 的历史记录。当前 runner 已改为 `runs/<id>/<run-id>/`，每次验收保留历史，不再删除 `runs/<id>/`；以实际输出的 `dir=` 找本次证据。共享环境先协调，或在独立 checkout/产物目录验收，不覆盖别人正在使用的目录。
+
 按 README 的步骤**从零**跑完整流程：删掉镜像目录 → 重新同步 → 构建 golden 镜像 →
 顺序跑全部用例。全程非特权（`PRIVDROP=1`）。
 
@@ -9,7 +11,7 @@
 # Mac 侧（顺带把 ~/.agents/AGENTS.md 投影进镜像夹具）
 bin/sync.sh
 # alpha 侧（会重建镜像；跑的时候**不要**再同步，sync 是整目录替换）
-ssh alpha 'rm -rf ~/ahsb-build/runs && cd ~/agent-harness-sandbox && PRIVDROP=1 bash bin/acceptance.sh'
+ssh alpha 'cd ~/agent-harness-sandbox && PRIVDROP=1 bash bin/acceptance.sh'
 ```
 
 ## 环境与起点

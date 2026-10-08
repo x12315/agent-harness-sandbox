@@ -10,10 +10,10 @@ macOS Tart 检验原生 macOS 行为。入口是 Mac 上的 `bin/test.sh <case-i
 
 1. **真相源在 Mac。** 本仓库（`~/Desktop/agent-harness-sandbox`）是唯一真相源。
    Linux 后端在 alpha 构建/运行，改后 `bin/sync.sh` 推过去；macOS 后端在 Mac 本机运行。
-2. **Linux 跑用例/验收期间不要同步。** `bin/sync.sh` 是**整目录替换**（`rm -rf` + `mv`）。
+2. **Linux 跑用例/验收期间不要同步。** 有其他 agent 使用时另建匹配 checkout，以 `DEST` 选择它；统一入口会校验源码，不一致时拒绝运行，不会自动同步。`bin/sync.sh` 是**整目录替换**（`rm -rf` + `mv`）。
    在跑的时候同步，会把正在写的产物连根删掉，甚至 SIGPIPE 掉正在跑的 VM —— 表现为"用例秒退、
    日志全空"，你会以为是代码坏了。
-3. **产物不在仓库里。** Linux 用例产物在 alpha 的 `~/ahsb-build/runs/<case-id>/`；
+3. **产物不在仓库里。** Linux 用例产物在 alpha 的 `~/ahsb-build/runs/<case-id>/<run-id>/`，重跑保留历史；
    macOS 用例产物在 Mac 的 `~/ahsb-build/runs/<case-id>/<run-id>/`。镜像、密钥和密码
    留在用户目录，只有用例和非机密的构建配方入库。
 4. **慢实验要有证据检查点。** 编译、VM 引导、SSH 等待前写下下一条状态和总时限；
@@ -103,7 +103,7 @@ pi 的 provider 配置烧在 `mkosi.skeleton/root/.pi/agent/models.json`（指�
 
 ## 看 Linux 结果与排查
 
-Linux 产物清单（都在 alpha 的 `~/ahsb-build/runs/<case-id>/`）；macOS 产物目录
+Linux 产物清单（都在 alpha 的 `~/ahsb-build/runs/<case-id>/<run-id>/`）；两个后端的本次目录
 由 `bin/test.sh` 的 `dir=` 给出，包含 `guest/tmp/ah.{out,err,rc}`、`vm.log` 和 `assert.txt`。
 
 | 文件 | 用途 |

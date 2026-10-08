@@ -19,8 +19,8 @@ ts() { date -u +%H:%M:%S; }
 OUT=${OUT:-$HOME/ahsb-build}
 # 证据要落在同步树之外：bin/sync.sh 是整目录替换，会把 cases/*/ 下的产物抹掉。
 # （上一轮审计就撞到过这件事：只能看到 /tmp 里的日志，没法逐条复核。）
-EVID=$OUT/evidence/$(date -u +%Y%m%dT%H%M%SZ)
-mkdir -p "$EVID"
+mkdir -p "$OUT/evidence"
+EVID=$(mktemp -d "$OUT/evidence/$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX")
 
 # PRIVDROP=1：把整条测试路径套进 setpriv --no-new-privs。
 # 这个标志一旦设上，连 sudo 自己都拒绝以 root 运行（实测报
@@ -56,16 +56,16 @@ echo
 echo "=== 2. 逐条用例 ==="
 fail=0
 for c in $CASES; do
-    rm -rf "$OUT/runs/$c"
+    RUN_DIR="$OUT/runs/$c/$(basename "$EVID")"
     echo "----- $c -----"
     case_start=$(date +%s)
-    "${RUNNER[@]}" bash bin/run-case.sh "$c" || { echo "CASE FAILED: $c"; fail=1; }
+    RUN_DIR="$RUN_DIR" "${RUNNER[@]}" bash bin/run-case.sh "$c" || { echo "CASE FAILED: $c"; fail=1; }
     # 把这条用例的关键证据抄一份到不会被同步抹掉的地方
     mkdir -p "$EVID/$c"
-    for f in assert.txt console.txt mock-requests.jsonl window.txt post.txt monitor.txt vm.log; do
-        [ -f "$OUT/runs/$c/$f" ] && cp "$OUT/runs/$c/$f" "$EVID/$c/"
+    for f in assert.txt console.txt mock-requests.jsonl window.txt post.txt monitor.txt vm.log source.sha256; do
+        [ -f "$RUN_DIR/$f" ] && cp "$RUN_DIR/$f" "$EVID/$c/"
     done
-    [ -d "$OUT/runs/$c/guest" ] && cp -a "$OUT/runs/$c/guest" "$EVID/$c/" 2>/dev/null || true
+    [ -d "$RUN_DIR/guest" ] && cp -a "$RUN_DIR/guest" "$EVID/$c/" 2>/dev/null || true
     echo "      [$c] 用时 $(( $(date +%s) - case_start )) 秒"
 done
 

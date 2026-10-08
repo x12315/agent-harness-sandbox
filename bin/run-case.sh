@@ -4,7 +4,7 @@
 #   bin/run-case.sh <case-id> '<一行命令>'
 #
 # 定义在 cases/<case-id>/（cmd、可选的 assert.sh / post.sh / env）；
-# 产物落在 $OUT/runs/<case-id>/（同步树之外，不会被 bin/sync.sh 抹掉）：
+# 产物落在 $OUT/runs/<case-id>/<run-id>/（每次独立目录，不覆盖历史）：
 #   command.txt          本次跑的命令
 #   console.txt          串口全文（带外通道的原始记录，出问题先看这个）
 #   vm.log               QEMU 的日志（stdbuf -oL 按行刷）
@@ -32,7 +32,7 @@ CASE_DIR=$TESTBED/cases/$CASE_ID
 
 # 产物目录必须在同步树之外，而且必须在第一次使用之前定义：
 # bin/sync.sh 是整目录替换，产物留在 cases/<id>/ 下会被同步连根删掉。
-RUN_DIR=${RUN_DIR:-$OUT/runs/$CASE_ID}
+RUN_DIR=${RUN_DIR:-}
 
 # 可选的 PUSH："src:dst src:dst"（src 相对仓库根或绝对路径）。
 # 走串口分块送进去，所以**改夹具/任务文件不需要重建镜像** ——
@@ -51,11 +51,19 @@ if [ -z "$CMD" ]; then
     CMD=$(cat "$CASE_DIR/cmd")
 fi
 
+mkdir -p "$OUT/runs/$CASE_ID"
+if [ -n "$RUN_DIR" ]; then
+    mkdir -p "$(dirname "$RUN_DIR")"
+    mkdir "$RUN_DIR" || { echo "run directory already exists or is unavailable: $RUN_DIR" >&2; exit 2; }
+else
+    RUN_DIR=$(mktemp -d "$OUT/runs/$CASE_ID/$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX")
+fi
 mkdir -p "$RUN_DIR/guest"
 printf '%s\n' "$CMD" >"$RUN_DIR/command.txt"
+[ -z "${SOURCE_MANIFEST:-}" ] || cp "$SOURCE_MANIFEST" "$RUN_DIR/source.sha256"
 
-VM="ahsb-${CASE_ID}-$(date +%s)"
-SES="ahsb-$CASE_ID"
+VM="ahsb-${CASE_ID}-$(date +%s)-$$"
+SES="ahsb-$CASE_ID-$$"
 MARK="AH${$}"
 
 # 自己一个 tmux server：不碰用户已有的会话，也能单独把 history-limit 抬高

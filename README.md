@@ -20,7 +20,9 @@
 | Mac `~/Desktop/agent-harness-sandbox` | **唯一真相源**（git）：Linux 构建配方、两个 runner 和用例定义；Tart 在本机运行 |
 | 一台 Linux 主机（本文档里叫 `alpha`，只是个 ssh 别名，可用 `REMOTE=` 覆盖） | **Linux 后端构建与运行**：mkosi 造镜像、systemd-vmspawn 起 VM；不放真相源 |
 
-同步用 `bin/sync.sh`（tar over ssh；alpha 上没装 rsync）。构建产物落在 alpha 的 `~/ahsb-build/`，不属于同步树。
+同步用 `bin/sync.sh`（tar over ssh；alpha 上没装 rsync）。构建产物落在 alpha 的 `~/ahsb-build/`，不属于同步树。**共享机器先协调同步：这个脚本会替换整个远端目录。** 有其他 agent 使用时，准备独立的匹配 checkout，用 `DEST=<远端相对 HOME 的路径> bin/test.sh <id>` 选择它，不替换现有目录。
+
+Linux 的统一入口执行前比较本地与远端 `bin/`、`mock/` 和本条 `cases/<id>/` 的文件 SHA256（忽略 `__pycache__`）。文件缺失或内容不同就返回 2、不运行用例；成功核对的清单留在本次产物的 `source.sha256`。这比 Git 提交号更能发现未提交改动，但**不核验 guest 镜像、已经运行的 mock 进程或额外 PUSH 文件**，这些被测输入仍须单独固定版本。直接调用 `bin/run-case.sh` 或 `bin/acceptance.sh` 不作跨机器比较。
 
 ## Linux 后端为什么用 vmspawn
 
@@ -92,10 +94,12 @@ bin/test.sh macos-pi-discovery
 ```
 
 用例**定义**在仓库里（`cases/<case-id>/`：`cmd`、可选的 `target`/`assert.sh`；Linux
-还支持 `post.sh`/`env`）。Linux 产物在 alpha 的 `~/ahsb-build/runs/<case-id>/`，
+还支持 `post.sh`/`env`）。Linux 产物在 alpha 的 `~/ahsb-build/runs/<case-id>/<run-id>/`，
 macOS 产物在 Mac 的 `~/ahsb-build/runs/<case-id>/<run-id>/`，均在同步树之外。
 两个后端都写 `guest/tmp/ah.{out,err,rc}`；Linux 额外写串口、monitor、mock 证据，
 macOS 写 VM 日志。`bin/acceptance.sh` 目前仍只验收 Linux。
+
+Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `dir=` 为准。显式设置 Linux `RUN_DIR` 时必须指向不存在的目录，已有目录返回 2，不覆盖。会话名也按调用进程区分，但共享 mock/资源的并发正确性尚未验收；这不等于支持并行跑完整套件。
 
 ## 状态
 
