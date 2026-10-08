@@ -13,7 +13,11 @@ cat > "$TMP/bin/ssh" <<'EOF'
 printf '%s\n' "$*" > "$AH_TEST_OUT"
 HOME="$FAKE_HOME" /bin/bash -c "$2"
 EOF
-chmod +x "$TMP/bin/ssh"
+printf '#!/bin/sh\nprintf "%%s\\n" "${FAKE_HOST_SYSTEM:-Darwin}"\n' > "$TMP/bin/uname"
+printf '#!/bin/sh\nexit 0\n' > "$TMP/bin/systemd-vmspawn"
+printf '#!/bin/sh\nshift\nexec "$@"\n' > "$TMP/bin/setpriv"
+printf '#!/bin/sh\necho 1001\n' > "$TMP/bin/id"
+chmod +x "$TMP/bin/ssh" "$TMP/bin/uname" "$TMP/bin/systemd-vmspawn" "$TMP/bin/setpriv" "$TMP/bin/id"
 export AH_TEST_OUT="$TMP/args" AH_TEST_RUNS="$TMP/runs" FAKE_HOME="$TMP"
 export PATH="$TMP/bin:$PATH" REMOTE=fixture DEST=agent-harness-sandbox
 bash "$TMP/local/bin/test.sh" pi-turn
@@ -42,4 +46,13 @@ test "$(wc -l < "$TMP/runs" | tr -d ' ')" = 1
 if bash "$TMP/local/bin/test.sh" invalid.case > /dev/null 2>&1; then
     echo 'invalid case id was accepted' >&2; exit 1
 fi
-echo 'ok: dispatch runs matching sources and rejects case/mock mismatches before execution'
+if EXECUTION=local FAKE_HOST_SYSTEM=Darwin bash "$TMP/local/bin/test.sh" pi-turn > "$TMP/out" 2> "$TMP/err"; then
+    echo 'local vmspawn on macOS was accepted' >&2; exit 1
+fi
+grep -q 'requires a Linux host' "$TMP/err"
+EXECUTION=local FAKE_HOST_SYSTEM=Linux bash "$TMP/local/bin/test.sh" pi-turn
+test "$(wc -l < "$TMP/runs" | tr -d ' ')" = 2
+if EXECUTION=invalid bash "$TMP/local/bin/test.sh" pi-turn > "$TMP/out" 2> "$TMP/err"; then
+    echo 'invalid execution route was accepted' >&2; exit 1
+fi
+echo 'ok: local Linux dispatch and remote source checks work; incompatible routes are rejected'

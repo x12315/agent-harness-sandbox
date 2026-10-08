@@ -1,0 +1,4 @@
+/usr/bin/open -a Calculator
+windows=$(/usr/bin/osascript -e 'tell application "Calculator" to count windows') || exit 1
+[ "$windows" -gt 0 ] || exit 1
+printf 'guestCalculatorWindows=%s\n' "$windows"

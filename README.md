@@ -4,11 +4,13 @@
 
 - **Linux vmspawn**：无网卡全 VM，vsock 模型 mock、串口和 QEMU monitor 带外取证；
   每例从镜像临时启动并丢弃。适合请求形状、指令层和越界用例。
-- **macOS Tart**：从已配置的本地 macOS VM 克隆；每例经 SSH 执行、取证、销毁。
-  适合 pi 和 iTerm 等 macOS 行为；默认 NAT **不是**物理 airgap。目前只验收 pi CLI，尚未验收 GUI 用例。
+- **Tart（macOS / ARM64 Linux）**：从已配置的本地 VM 克隆；每例经 SSH 执行、取证、销毁。
+  默认 NAT **不是**物理 airgap。macOS CLI 已实测；Linux Tart 和 GUI 正向链路尚未实测通过。
+
+**本机执行也在 VM 内，不在工作系统裸跑。** Linux 主机可选本机 vmspawn，Mac 可选本机 Tart；有头应用只使用 guest 桌面，runner 不打开宿主查看器。路由、GUI seed 和资源/网络边界见 [本机 VM 链路](docs/local-vm-routes.md)。
 
 统一入口：`bin/test.sh <case-id>`。缺少 `cases/<id>/target` 时沿用 Linux 后端；
-`target=macos-tart` 选择 Tart。共同契约是退出码、产物目录与 `guest/tmp/ah.{out,err,rc}`，
+`target=macos-tart` / `linux-tart` 选择对应 OS 的本机 Tart。共同契约是退出码、产物目录与 `guest/tmp/ah.{out,err,rc}`，
 不强行统一串口、mock 或 GUI 证据。
 
 **使用边界：** 这是供可信项目编写用例的 CLI 测试床，不是接受任意第三方仓库的安全执行服务。Linux 用例的 `env`、`post.sh`、`assert.sh`，以及 macOS 用例的 `assert.sh` 都会在宿主执行；外部项目提供的用例定义必须先审查，不能把不可信脚本直接交给 runner。macOS 默认 NAT，也不能用于验证无网卡隔离。
@@ -28,7 +30,7 @@
 
 同步用 `bin/sync.sh`（tar over ssh；alpha 上没装 rsync）。构建产物落在 alpha 的 `~/ahsb-build/`，不属于同步树。**共享机器先协调同步：这个脚本会替换整个远端目录。** 有其他 agent 使用时，准备独立的匹配 checkout，用 `DEST=<远端相对 HOME 的路径> bin/test.sh <id>` 选择它，不替换现有目录。
 
-Linux 的统一入口执行前比较本地与远端 `bin/`、`mock/` 和本条 `cases/<id>/` 的文件 SHA256（忽略 `__pycache__`）。文件缺失或内容不同就返回 2、不运行用例；成功核对的清单留在本次产物的 `source.sha256`。这比 Git 提交号更能发现未提交改动，但**不核验 guest 镜像、已经运行的 mock 进程或额外 PUSH 文件**，这些被测输入仍须单独固定版本。直接调用 `bin/run-case.sh` 或 `bin/acceptance.sh` 不作跨机器比较。
+Linux 的统一入口在 `EXECUTION=remote` 时执行前比较本地与远端 `bin/`、`mock/` 和本条 `cases/<id>/` 的文件 SHA256（忽略 `__pycache__`）。文件缺失或内容不同就返回 2、不运行用例；成功核对的清单留在本次产物的 `source.sha256`。这比 Git 提交号更能发现未提交改动，但**不核验 guest 镜像、已经运行的 mock 进程或额外 PUSH 文件**，这些被测输入仍须单独固定版本。直接调用 `bin/run-case.sh` 或 `bin/acceptance.sh` 不作跨机器比较。
 
 ## Linux 后端为什么用 vmspawn
 
@@ -54,8 +56,9 @@ mock/mock_llm.py      确定性 mock 模型 API（Anthropic + OpenAI 双协议�
 bin/sync.sh           把仓库同步到 alpha
 bin/build-image.sh    在 alpha 上构建 golden 镜像（task-3）
 bin/run-case.sh       Linux 用例原有生命周期（仍可在 alpha 直接调用）
-bin/test.sh           Mac 上的统一入口，按 cases/<id>/target 分发
-bin/run-macos-case.sh Tart 用例：克隆 → 执行 → 取证 → 销毁
+bin/test.sh           统一入口，按 cases/<id>/target 和 EXECUTION 分发
+bin/run-tart-case.sh  两种 Tart guest：克隆 → 执行/guest GUI → 取证 → 销毁
+bin/run-macos-case.sh 兼容旧的 macOS 入口
 cases/                用例定义（Linux 缺省；macOS 显式写 target）
 docs/                 决策记录、清理记录、盲区声明
 ```
@@ -70,7 +73,7 @@ docs/                 决策记录、清理记录、盲区声明
 | Linux 构建期有外网 | mkosi 装包 + npm 装两个 harness；Linux 运行期 VM 无网卡。macOS 备好基底 VM 后，测试时默认 NAT |
 | （可选）你自己的 `~/.agents/AGENTS.md` | 有它，指令层用例验证的是**你的真实指令层**；没有则用仓库里的中性夹具，用例照样全绿 |
 
-Linux 后端在 macOS 上维护、在 Linux 上构建与运行；macOS 后端在 Mac 上运行。
+Linux vmspawn 可在本机 Linux 构建与运行，也可从 Mac 调远端；两种 Tart guest 在 Apple Silicon Mac 上运行。
 Linux 路径的 Mac 侧只需要 `git`、`ssh`、`tar`；macOS 用例还需要 Tart、
 已配置的基底 VM 与相应断言工具（当前 `macos-pi-discovery` 需要 `jq`）。
 
@@ -95,8 +98,13 @@ ssh alpha 'cd ~/agent-harness-sandbox && PRIVDROP=1 bash bin/acceptance.sh'
 # 3. 从 Mac 跑一条 Linux 用例（也可在 alpha 直接调用原有 run-case.sh）
 bin/test.sh pi-turn
 
-# 4. 运行 macOS 用例：先按 docs/macos-tart.md 准备基底 VM 并设置本机的三个环境变量
-bin/test.sh macos-pi-discovery
+# 4. 在 Linux 主机本机运行（仍是无网卡 VM，不需要 SSH 到自己）
+EXECUTION=local bin/test.sh pi-turn
+
+# 5. Mac 本机 Tart：先按 docs/macos-tart.md 准备基底 VM 和 SSH 配置
+EXECUTION=local bin/test.sh macos-pi-discovery
+# ARM64 Linux 基底准备方法与限制见 docs/local-vm-routes.md
+# EXECUTION=local bin/test.sh linux-pi-discovery
 ```
 
 用例**定义**在仓库里（`cases/<case-id>/`：`cmd`、可选的 `target`/`assert.sh`；Linux
@@ -125,7 +133,7 @@ Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `
 
 - Linux 设计上排除**真实网络层**；macOS 默认 NAT 可联网，却没有 Linux 的物理 airgap。
   Tart 的 Softnet/仅主机网络模式需要宿主 root/SUID，本项目不自动申请或启用。
-- Linux 没有 GUI；macOS 可运行 GUI，但当前只有 pi CLI 用例，**iTerm GUI 未验收**。
+- Linux vmspawn 基准镜像没有桌面；Tart 的 `display=headed` 只在已准备好的 guest 桌面运行。有头截图契约及失败拒绝已实现，但**真实 GUI 正向与 iTerm 用例仍未验收**。
 - **多节点**与「让别的 agent 通过 API 自助申请沙盒」仍不支持。
 
 完整盲区清单见 `docs/BLINDSPOTS.md`。
@@ -142,6 +150,7 @@ Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `
 | `docs/acceptance.md` | Linux 从零复现的验收记录（环境、哈希、8 条用例结果） |
 | `docs/BLINDSPOTS.md` | Linux 盲区与 macOS 后端的不同保证 |
 | `docs/macos-tart.md` | macOS 基底前置条件、CLI 调用及隔离边界 |
+| `docs/local-vm-routes.md` | 本机 Linux/macOS 路由、guest 有头测试和不干扰工作桌面的边界 |
 | `docs/golden-image.md` | golden 镜像定义与验收 |
 | `docs/host-prereqs.md` | alpha 前置条件、两处临时 hack、环境坑清单 |
 | `docs/alpha-cleanup.md` | 上一版（microsandbox）产物的回收记录 |

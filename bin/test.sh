@@ -12,6 +12,19 @@ TARGET=linux-vmspawn
 [ -f "$CASE_DIR/target" ] && read -r TARGET < "$CASE_DIR/target"
 case "$TARGET" in
     linux-vmspawn)
+        EXECUTION=${EXECUTION:-remote}
+        case "$EXECUTION" in
+            local)
+                [ "$(uname -s)" = Linux ] || { echo 'local linux-vmspawn requires a Linux host; on macOS use a linux-tart case or remote execution' >&2; exit 2; }
+                for tool in systemd-vmspawn setpriv; do
+                    command -v "$tool" >/dev/null || { echo "missing local tool: $tool" >&2; exit 2; }
+                done
+                [ "$(id -u)" != 0 ] || { echo 'local vmspawn must run as a non-root user' >&2; exit 2; }
+                exec setpriv --no-new-privs bash "$ROOT/bin/run-case.sh" "$CASE_ID"
+                ;;
+            remote) ;;
+            *) echo 'EXECUTION must be local or remote' >&2; exit 2 ;;
+        esac
         REMOTE=${REMOTE:-alpha}
         DEST=${DEST:-agent-harness-sandbox}
         [[ $DEST =~ ^[a-zA-Z0-9_./-]+$ ]] || { echo "invalid remote directory: $DEST" >&2; exit 2; }
@@ -38,8 +51,9 @@ case "$TARGET" in
             fi &&
             SOURCE_MANIFEST=\"\$check/source.sha256\" bash bin/run-case.sh '$CASE_ID'" < "$MANIFEST"
         ;;
-    macos-tart)
-        bash "$ROOT/bin/run-macos-case.sh" "$CASE_ID"
+    macos-tart|linux-tart)
+        [ "${EXECUTION:-local}" = local ] || { echo 'Tart cases currently require EXECUTION=local' >&2; exit 2; }
+        bash "$ROOT/bin/run-tart-case.sh" "$CASE_ID"
         ;;
     *) echo "unknown target for $CASE_ID: $TARGET" >&2; exit 2 ;;
 esac

@@ -5,6 +5,7 @@ macOS Tart 检验原生 macOS 行为。入口是 Mac 上的 `bin/test.sh <case-i
 选择后端；两种隔离保证不同。本文只写动手前的规则，细节见 `docs/`。
 
 对外接入、升级依赖或讨论接口稳定性时，先读 `README.md` 的「版本与接口承诺」。
+本机链路、Linux Tart 或有头测试先读 `docs/local-vm-routes.md`：应用与桌面操作只能在 guest，保持宿主查看器/音频/共享关闭；guest 未准备好就失败，不回退到宿主执行。
 
 ---
 
@@ -65,7 +66,8 @@ ssh alpha 'cd ~/agent-harness-sandbox && SKIP_BUILD=1 PRIVDROP=1 bash bin/accept
 
 ```
 cases/<id>/cmd          # 必填：guest 里执行的命令
-cases/<id>/target       # 可选：macos-tart；缺省 linux-vmspawn
+cases/<id>/target       # 可选：macos-tart / linux-tart；缺省 linux-vmspawn
+cases/<id>/display      # Tart 可选：headed；缺省 cli，应用只在 guest
 cases/<id>/assert.sh    # 可选：销毁后跑，参数 = 产物目录（$D）
 cases/<id>/post.sh      # 可选：VM 还活着时跑，用于带外/现场类检查
 cases/<id>/env          # 可选：覆盖 CPUS / RAM 等变量
@@ -131,8 +133,8 @@ Linux 产物清单（都在 alpha 的 `~/ahsb-build/runs/<case-id>/<run-id>/`）
 ## 后端边界
 
 Linux 无网卡、vsock mock、串口抢救；macOS Tart 有 NAT 网络、通过 SSH 取证，适合原生
-GUI 测试，但**没有 Linux 的物理 airgap**。目前 macOS 用例只覆盖 pi CLI 发现，
-没有声称 iTerm GUI 已验收。macOS 基底前置条件、机密分界与运行方法见 `docs/macos-tart.md`；
+GUI 测试，但**没有 Linux 的物理 airgap**。macOS CLI 已实测；新增有头用例的真实正向链路
+仍缺 GUI seed，没有声称 iTerm GUI 已验收。macOS 基底前置条件、机密分界与运行方法见 `docs/macos-tart.md`；
 Linux 的盲区与残余风险见 `docs/BLINDSPOTS.md`。
 
 ## 深水区（按需读，不要一开始全读）
@@ -148,3 +150,4 @@ Linux 的盲区与残余风险见 `docs/BLINDSPOTS.md`。
 | `docs/acceptance.md` | 看验收证据、复现标准流程 |
 | `docs/BLINDSPOTS.md` | 判断 Linux 无网卡后端能不能测、macOS 新增覆盖什么 |
 | `docs/macos-tart.md` | 构建/运行 macOS VM、权限与隔离边界 |
+| `docs/local-vm-routes.md` | 本机执行、Linux Tart、有头模式、guest 准备与宿主干扰边界 |

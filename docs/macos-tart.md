@@ -4,7 +4,9 @@
 
 ## 基底 VM 前置条件
 
-先在本机准备一台**停机**的 Tart macOS VM；`bin/test.sh` 只克隆它，不修改或删除它。基底需有 `admin` 账户、启用 SSH、在 `admin` 的 `authorized_keys` 中放入专用公钥，并已装好用例所需程序。当前 `macos-pi-discovery` 需要 pi 0.87.1 和 Node，走 guest 的登录 zsh 解析 `pi`；iTerm GUI 用例尚未实现。可按 [Tart 官方快速开始](https://tart.run/quick-start/)取得 macOS 镜像，再在基底 VM 内完成账户和程序配置。
+本机 Linux 路由、Tart 的 `display=headed`、GUI seed 要求及宿主干扰限制统一见 [本机 VM 链路](local-vm-routes.md)。Tart 默认关闭宿主查看器、音频、USB 和剪贴板；有头也只运行 guest 应用。
+
+先在本机准备一台**停机**的 Tart macOS VM；`bin/test.sh` 只克隆它，不修改或删除它。基底需有 `admin` 账户、启用 SSH、在 `admin` 的 `authorized_keys` 中放入专用公钥，并已装好用例所需程序。当前 `macos-pi-discovery` 需要 pi 0.87.1 和 Node，走 guest 的登录 zsh 解析 `pi`；另有需要 GUI seed 的 `macos-desktop-smoke`，其真实正向链路及 iTerm GUI 用例尚未验收。可按 [Tart 官方快速开始](https://tart.run/quick-start/)取得 macOS 镜像，再在基底 VM 内完成账户和程序配置。
 
 本项目**尚不提供经过验证的“裸 IPSW → ready VM”构建器**：实测 Packer 的 Setup Assistant 按键与 OCR 在 macOS 26.6 的账户页面失去同步。不要把构建脚本静态校验通过当成镜像已能自动制作。镜像安装、首次账户配置、系统更新均发生在后端边界之外；后端只承诺从已配置基底运行测试。
 
@@ -55,4 +57,4 @@ runner 从基底克隆出本次独立 VM，不挂宿主文件、关闭剪贴板�
 
 Linux vmspawn VM **没有网卡**；macOS Tart 目前使用默认 NAT：guest 可访问外网，且可能访问宿主服务。macOS 仅关闭目录共享、剪贴板、USB，适合行为测试，**不适合以 Linux airgap 的保证运行不可信代码**。Tart 的 `--net-host` 实测会调用 Softnet，需要给宿主 Softnet 二进制 root/SUID 或免密 sudo，并可能影响 DHCP；此项目不自行提权或自动启用。若需要更强网络隔离，先让人确认权限范围，再设计独立用例。
 
-Linux acceptance（`bin/acceptance.sh`）目前只覆盖 Linux；macOS 用例通过 `bin/test.sh` 单独验证。GUI 登录与窗口断言尚未入库，不能用 CLI 用例结论代替 GUI 结论。
+Linux acceptance（`bin/acceptance.sh`）目前只覆盖 Linux vmspawn；Tart 用例通过 `bin/test.sh` 单独验证。`macos-desktop-smoke` 的 guest 桌面、窗口和截图契约已入库，但本机基底实测在 Aqua 前置检查被拒绝（guest rc 42），真实 GUI 正向仍未通过；不能用 CLI 或模拟测试代替 GUI 结论。

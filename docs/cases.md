@@ -10,7 +10,8 @@
 | 文件 | 作用 |
 | --- | --- |
 | `cmd` | 在 Linux guest 里跑的那一行命令（必填） |
-| `target` | 缺省 `linux-vmspawn`；写 `macos-tart` 则由 Mac 本地 Tart 后端运行 |
+| `target` | 缺省 `linux-vmspawn`；`macos-tart` / `linux-tart` 选对应 OS 的本机 Tart guest |
+| `display` | Tart 可选 `headed`，需已准备好的 guest 桌面；规则见 `docs/local-vm-routes.md` |
 | `assert.sh` | 拿到产物之后跑的断言，接一个参数：用例目录（可选） |
 
 用例本身进了 git，所以"被测对象 + 断言口径"是一起版本化的；`bin/run-case.sh <id>`

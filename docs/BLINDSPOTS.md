@@ -23,7 +23,7 @@
 
 | 未覆盖 | 说明 |
 | --- | --- |
-| Linux GUI / computer-use / 浏览器 | Linux 镜像里没有 X/Wayland、没有浏览器、没有 VNC；macOS 后端虽有原生 GUI，目前尚未实现 GUI 用例 |
+| Linux GUI / computer-use / 浏览器 | vmspawn 基准镜像没有 X/Wayland、浏览器或 VNC；Tart guest 有头执行/截图契约已实现，但 Linux Tart 和真实 GUI 正向尚未验收，准备与边界见 `docs/local-vm-routes.md` |
 | 多节点与并发 | 全部用例串行。宿主上并发跑多条用例时的相互影响、资源争抢、端口冲突都没测 |
 | 让 agent 自助申请沙盒的 API | 现在是 CLI。要做要走 Incus restricted project / E2B / agent-substrate，且与"权限收敛到非 root 用户"有张力 |
 | 资源耗尽（CPU / 内存 / PID 打满） | DSec 记录过递归 `grep /proc/kpagecgroup`、`yes` 写满几十 GB。我们只做了**有界**的磁盘填充 |
