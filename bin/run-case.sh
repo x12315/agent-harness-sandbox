@@ -70,6 +70,30 @@ MARK="AH${$}"
 # （产物靠串口回传，history 太小会把 base64 冲掉）。
 tx() { tmux -L ahsb "$@"; }
 
+# Any failure during archive decoding/assertion must still close this call's VM.
+CLEANED=0
+cleanup_vm() {
+    [ "$CLEANED" = 0 ] || return 0
+    CLEANED=1
+    tx send-keys -t "$SES" C-a x >/dev/null 2>&1 || true
+    sleep 1
+    if [ -f "$RUN_DIR/vm.pid" ]; then
+        local pid args child
+        pid=$(cat "$RUN_DIR/vm.pid")
+        args=$(ps -p "$pid" -o args= 2>/dev/null || true)
+        if [[ " $args " == *" --machine=$VM "* ]]; then
+            while read -r child args; do
+                [[ " $args " != *" --machine=$VM "* ]] || kill "$child" 2>/dev/null || true
+            done < <(ps -o pid=,args= --ppid "$pid" 2>/dev/null || true)
+            kill "$pid" 2>/dev/null || true
+        fi
+    fi
+    tx kill-session -t "$SES" 2>/dev/null || true
+}
+trap cleanup_vm EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # ── 1. mock 必须在宿主上听着：它是 guest 唯一能到达的地方 ────────────────────
 if [ ! -f "$OUT/mock.pid" ] || ! kill -0 "$(cat "$OUT/mock.pid")" 2>/dev/null; then
     MOCK_PORT="$MOCK_PORT" MOCK_REQUESTS="$MOCK_REQUESTS" \
@@ -100,7 +124,7 @@ done
 if ! tx capture-pane -pt "$SES" 2>/dev/null | grep -q 'root@archlinux'; then
     echo "guest 没能起来，见 $RUN_DIR/vm.log 与 $RUN_DIR/console.txt" >&2
     tx capture-pane -pJ -S - -t "$SES" >"$RUN_DIR/console.txt" 2>/dev/null || true
-    tx kill-session -t "$SES" 2>/dev/null || true
+    cleanup_vm
     exit 1
 fi
 
@@ -135,7 +159,7 @@ done
 REMOTE="$PRELUDE; mkdir -p /work; cd /work; { $CMD ; } >/tmp/ah.out 2>/tmp/ah.err; echo \$? >/tmp/ah.rc;"
 # 只把真实存在的路径交给 tar：harness 还没跑过时 ~/.claude 不存在，
 # 而 tar 遇到不存在的成员会整个不产出归档（踩过，表现为 base64: No such file）。
-REMOTE="$REMOTE cd /; F='tmp/ah.out tmp/ah.err tmp/ah.rc'; for p in root/.claude root/.claude.json root/.pi root/.codex; do [ -e \"\$p\" ] && F=\"\$F \$p\"; done; tar -czf /tmp/ah.tgz \$F;"
+REMOTE="$REMOTE cd /; F='tmp/ah.out tmp/ah.err tmp/ah.rc'; for p in tmp/ah-artifacts root/.claude root/.claude.json root/.pi root/.codex; do [ -e \"\$p\" ] && F=\"\$F \$p\"; done; tar -czf /tmp/ah.tgz \$F;"
 # 标记由 guest 自己生成：串口会把命令行原样回显，如果标记写在命令里，
 # 回显本身就包含它，会让人误以为命令已经跑完（踩过两次）。
 # 回显里是字面量 "\$R"，只有真正的输出里才是数字，正则天然区分得开。
@@ -159,10 +183,14 @@ printf 'start=%s end=%s\n' "$START" "$END" >"$RUN_DIR/window.txt"
 # ── 5. 收产物 ───────────────────────────────────────────────────────────────
 # -S - ：连回滚缓冲一起拓，否则大一点的 base64 会被冲掉。
 tx capture-pane -pJ -S - -t "$SES" >"$RUN_DIR/console.txt"
-if ! awk '/^==M[0-9]+==BEGIN==/{f=1;next} /^==M[0-9]+==END==/{f=0} f' "$RUN_DIR/console.txt" \
+# tee keeps the complete byte stream even when a fresh tmux server's default
+# 2000-line scrollback drops BEGIN. Bash may prefix BEGIN with bracketed-paste
+# escape bytes; anchor its end, and strip CR from the raw PTY stream.
+if ! tr -d '\r' < "$RUN_DIR/vm.log" \
+    | awk '/==M[0-9]+==BEGIN==$/{f=1;next} /^==M[0-9]+==END==$/{f=0} f' \
     | tr -d ' \t\r\n' | base64 -d >"$RUN_DIR/guest.tgz" 2>/dev/null; then
-    echo "产物回传失败（解码不了），看 $RUN_DIR/console.txt" >&2
-    tx kill-session -t "$SES" 2>/dev/null || true
+    echo "产物回传失败（解码不了），看 $RUN_DIR/vm.log 与 console.txt" >&2
+    cleanup_vm
     exit 1
 fi
 tar -xzf "$RUN_DIR/guest.tgz" -C "$RUN_DIR/guest"
@@ -180,23 +208,14 @@ if [ -f "$CASE_DIR/post.sh" ]; then
     SES="$SES" OUT="$OUT" bash "$CASE_DIR/post.sh" "$RUN_DIR" 2>&1 | tee "$RUN_DIR/post.txt" || {
         echo "post.sh 失败（见 $RUN_DIR/post.txt）" >&2
         # 失败也要把 VM 收干净，否则残留的 QEMU 会污染后面的用例
-        [ -f "$RUN_DIR/vm.pid" ] && kill -9 "$(cat "$RUN_DIR/vm.pid")" 2>/dev/null || true
-        tx kill-session -t "$SES" 2>/dev/null || true
-        rm -f "$DISK" "$MON"
+        cleanup_vm
         exit 1
     }
 fi
 
 # ── 6. 销毁 ─────────────────────────────────────────────────────────────────
-# 先让 monitor 把 VM 收掉（我们在 console 上，Ctrl-A x 是 QEMU 的退出键），
-# 再兜底杀进程与会话。
-tx send-keys -t "$SES" C-a x >/dev/null 2>&1 || true
-sleep 2
-if [ -f "$RUN_DIR/vm.pid" ]; then
-    kill "$(cat "$RUN_DIR/vm.pid")" 2>/dev/null || true
-    kill -9 "$(cat "$RUN_DIR/vm.pid")" 2>/dev/null || true
-fi
-tx kill-session -t "$SES" 2>/dev/null || true
+# Idempotent with the EXIT trap; never touch another call's machine/session.
+cleanup_vm
 
 RC=$(cat "$RUN_DIR/guest/tmp/ah.rc" 2>/dev/null || echo 255)
 echo "case=$CASE_ID rc=$RC dir=$RUN_DIR"

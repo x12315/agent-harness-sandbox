@@ -15,13 +15,20 @@ tar czf "$TMP/guest.tgz" -C "$TMP/archive" tmp
 base64 < "$TMP/guest.tgz" > "$TMP/payload"
 cat > "$TMP/tools/tmux" <<'EOF'
 #!/bin/sh
+printf '%s\n' "$3" >> "$FAKE_TMUX_EVENTS"
+if [ "$3" = new-session ]; then
+    for arg in "$@"; do command=$arg; done
+    log=${command##*tee }
+    printf '\033[?2004l\r==M123==BEGIN==\r\n%s\r\n==M123==END==\r\n' "$(cat "$FAKE_PAYLOAD")" > "$log"
+fi
 if [ "$3" = capture-pane ]; then
-    printf 'root@archlinux\n==M123==BEGIN==\n%s\n==M123==END==\n' "$(cat "$FAKE_PAYLOAD")"
+    # Simulate truncated scrollback: BEGIN/payload survived only in vm.log.
+    printf 'root@archlinux\n==M123==END==\n'
 fi
 EOF
 printf '#!/bin/sh\nexit 0\n' > "$TMP/tools/sleep"
 chmod +x "$TMP/tools/tmux" "$TMP/tools/sleep"
-export PATH="$TMP/tools:$PATH" OUT="$TMP/out" FAKE_PAYLOAD="$TMP/payload"
+export PATH="$TMP/tools:$PATH" OUT="$TMP/out" FAKE_PAYLOAD="$TMP/payload" FAKE_TMUX_EVENTS="$TMP/tx.log"
 export MOCK_REQUESTS="$TMP/absent-requests"
 unset RUN_DIR PUSH SOURCE_MANIFEST
 for i in 1 2; do bash "$TMP/repo/bin/run-case.sh" history > "$TMP/run$i.log"; done
@@ -38,6 +45,14 @@ fi
 grep -q 'run directory already exists' "$TMP/reuse.log"
 grep -q 'original evidence' "$first/guest/tmp/ah.out"
 
+# A corrupt tar archive must fail AND close this call's VM/session.
+printf 'not a tar archive' | base64 > "$TMP/broken-payload"
+: > "$FAKE_TMUX_EVENTS"
+if FAKE_PAYLOAD="$TMP/broken-payload" bash "$TMP/repo/bin/run-case.sh" history > "$TMP/broken.log" 2>&1; then
+    echo 'corrupt archive was accepted' >&2; exit 1
+fi
+test "$(grep -c '^kill-session$' "$FAKE_TMUX_EVENTS")" = 2
+
 # Acceptance must preserve past runs too, including when run twice in one second.
 cp "$ROOT/bin/acceptance.sh" "$TMP/repo/bin/"
 cat > "$TMP/repo/bin/run-case.sh" <<'EOF'
@@ -53,7 +68,7 @@ chmod +x "$TMP/tools/setpriv" "$TMP/tools/systemctl"
 for i in 1 2; do
     SKIP_BUILD=1 PRIVDROP=1 bash "$TMP/repo/bin/acceptance.sh" history > "$TMP/accept$i.log" 2> "$TMP/accept$i.err"
 done
-test "$(find "$OUT/runs/history" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = 4
+test "$(find "$OUT/runs/history" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = 5
 grep -q '^ALL CASES PASS$' "$TMP/accept1.log"
 grep -q '^ALL CASES PASS$' "$TMP/accept2.log"
-echo 'ok: Linux runs and acceptance retain separate history; existing RUN_DIR is rejected'
+echo 'ok: Linux history is retained; raw serial survives truncated scrollback; corrupt archives fail with cleanup'
