@@ -4,6 +4,8 @@
 macOS Tart 检验原生 macOS 行为。入口是 Mac 上的 `bin/test.sh <case-id>`，用例的 `target`
 选择后端；两种隔离保证不同。本文只写动手前的规则，细节见 `docs/`。
 
+**资产发现：** 首次接手、找不到 `TART_BASE_VM`、缺镜像或换机器时，先运行只读 `bin/locate-assets.sh`，再读 `docs/assets.md`。先复用本机已验收的停机基底；否则按 `assets/catalog.json` 从 alpha 恢复。私有访问缺项升级给管理员，不因缺凭据而重装 macOS；发现目录中的候选不等于验收通过。
+
 对外接入、升级依赖或讨论接口稳定性时，先读 `README.md` 的「版本与接口承诺」。
 本机链路、Linux Tart 或有头测试先读 `docs/local-vm-routes.md`：应用与桌面操作只能在 guest，保持宿主查看器/音频/共享关闭；guest 未准备好就失败，不回退到宿主执行。
 
@@ -30,9 +32,9 @@ macOS Tart 检验原生 macOS 行为。入口是 Mac 上的 `bin/test.sh <case-i
 ```bash
 bin/sync.sh                         # Mac：仅 Linux 后端需要同步到 alpha；别在用例运行时同步
 bin/test.sh claude-turn              # Linux vmspawn（从 Mac 调远端）
-TART_BASE_VM=ahsb-macos-ready TART_SSH_KEY=~/.config/agent-harness-sandbox/id_ed25519 \
-  TART_KNOWN_HOSTS=~/.config/agent-harness-sandbox/known_hosts \
-  bin/test.sh macos-pi-discovery     # macOS Tart：克隆、执行、取证、销毁
+bin/locate-assets.sh                 # macOS：先找已有基底/私有配置，缺失按 docs/assets.md 恢复
+# 在自己的 shell 载入本机管理员维护的 macos-ready.env 后：
+bin/test.sh macos-pi-discovery       # macOS Tart：克隆、执行、取证、销毁
 ```
 
 ## 日常循环（重要：别每次都重建镜像）
@@ -141,6 +143,7 @@ Linux 的盲区与残余风险见 `docs/BLINDSPOTS.md`。
 
 | 文件 | 什么时候读 |
 | --- | --- |
+| `docs/assets.md` | 找不到镜像/基底、换机器、alpha 下载授权、公钥注入与导入验收 |
 | `docs/cases.md` | 写用例、改断言 |
 | `docs/decisions.md` | 想知道"为什么是 vmspawn / 为什么不用 Incus / 为什么换过又换回来" |
 | `docs/golden-image.md` | 改镜像内容、看镜像里有什么 |

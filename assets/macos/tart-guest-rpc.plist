@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.ahsb.guest-rpc</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/admin/.local/lib/ahsb-guest-agent/0.15.0/tart-guest-agent</string>
+        <string>--run-rpc</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/ahsb-guest-rpc.out</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/ahsb-guest-rpc.err</string>
+</dict>
+</plist>

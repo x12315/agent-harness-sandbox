@@ -2,6 +2,10 @@
 
 面向在 Apple Silicon Mac 上验证 agent CLI 或原生应用行为的开发者。Tart 后端与 Linux vmspawn 后端共享用例入口和结果契约，**不共享网络隔离保证**。
 
+## 先复用已有基底
+
+找不到镜像、首次接手或迁移到另一台 Mac 时，先运行 `bin/locate-assets.sh` 并读 [资产发现与复用](assets.md)。成熟归档已在 alpha 私有文件服务托管；优先已有本机基底或归档，不默认从裸 IPSW/上游系统重做。分发基底支持普通 guest 用户 RPC 注入自己的 SSH 公钥，不需要制作人的私钥。仓库非机密资产声明见 `assets/catalog.json`，密码/本机偏好不入库。
+
 ## 基底 VM 前置条件
 
 本机 Linux 路由、Tart 的 `display=headed`、GUI seed 要求及宿主干扰限制统一见 [本机 VM 链路](local-vm-routes.md)。Tart 默认关闭宿主查看器、音频、USB 和剪贴板；有头也只运行 guest 应用。
@@ -24,7 +28,7 @@ tart export <stopped-ready-vm> "$HOME/.local/share/agent-harness-sandbox/ready.t
 tart import /path/to/ready.tvm <local-ready-vm-name>
 ```
 
-`.tvm` 包含客体账户、SSH 授权、应用及可能的机密；只在受控位置私下传递，不能入库或公开发布。导入后仍须核验客体主机公钥、工具版本和 GUI 是否可登录。已在同一台 Mac 实测 `tart export` → `tart import` → 从导入基底克隆运行 `macos-pi-discovery`，断言通过且临时克隆清理；**跨机器迁移后的 GUI/TCC 保留仍未验收**；本机新克隆的 GUI 验收见 [macOS GUI 基底](macos-gui-seed.md)。
+`.tvm` 包含客体账户、SSH 授权、应用及可能的机密；只在受控位置私下传递，不能入库或公开发布。导入后仍须核验客体主机公钥、工具版本和 GUI 是否可登录。已在同一台 Mac 实测当前分发归档 `tart export` → `tart import` → 接收人公钥注入 → 从导入基底克隆运行四条 CLI/GUI smoke，断言及真实截图复核通过，临时基底/克隆已清理；**跨机器迁移后的 GUI/TCC 保留仍未验收**；本机新克隆的 GUI 验收见 [macOS GUI 基底](macos-gui-seed.md)。
 
 本机在 macOS 26.6 对 Lume 0.5.3 做过替代方案试验：从 IPSW 安装系统、离线建账户及 SSH 检查均通过，但原版在 `diskutil apfs updatePreboot /` 收尾失败；本地跳过该 Recovery 专用步骤后 CLI 报成功，实际 VNC 截图仍出现 “Update Mac Automatically” 和 “Accessibility” 设置页。仅将记录中的 26.5.2 版本标记改为 26.6 也未消除页面。因此**不能用 SSH 健康检查替代 GUI 基底验收，当前不将 Lume 纳入正式后端**；若今后重试，应从已安装的停机原始镜像克隆，再单独执行 `lume setup`，不要让一次配置失败删掉整台 IPSW 安装产物。
 

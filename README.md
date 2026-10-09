@@ -15,6 +15,18 @@
 
 **使用边界：** 这是供可信项目编写用例的 CLI 测试床，不是接受任意第三方仓库的安全执行服务。Linux 用例的 `env`、`post.sh`、`assert.sh`，以及 macOS 用例的 `assert.sh` 都会在宿主执行；外部项目提供的用例定义必须先审查，不能把不可信脚本直接交给 runner。macOS 默认 NAT，也不能用于验证无网卡隔离。
 
+## 镜像在哪里：先复用，不先重装
+
+**仓库包含 macOS 测试体系，镜像本体不在 Git。** macOS 使用已配置的完整桌面基底（不是裁剪的小系统），四条 CLI/原生 GUI/浏览器用例统一由 `bin/test.sh` 执行。
+
+```bash
+bin/locate-assets.sh   # 只读：定位本机私有配置、归档、Linux 启动文件与 Tart 基底候选
+```
+
+先复用本机私有 `macos-ready.env` 指定的已验收停机基底；有归档则导入，没有则去 **alpha 私有文件服务**下载。标准归档位置为 `~/Library/Application Support/agent-harness-sandbox/images/macos-ready.tvm`，Tart 基底由 `tart list` 发现；不要手工搬 `~/.tart/vms/`。
+
+**位置、SHA256、平台和访问条件见 [资产目录](assets/catalog.json)；完整恢复步骤见 [资产发现与复用](docs/assets.md)。** alpha 已发布 macOS 与 Linux 当前归档，不需要 GHCR token、Actions 或 runner。没有下载账号/CA/Tailscale 权限时，申请授权而不是重新构建。镜像含 guest 账户和授权状态，仅供获授权的接收人使用；下载密码、私钥和本机选择留在私有配置。
+
 ## 版本与接口承诺
 
 **项目仍在持续迭代中。** `main`、feature 分支及其他未打发布 tag 的提交，都不是接口保证版本；CLI 参数、用例格式和产物布局可能变化。
@@ -57,6 +69,9 @@ bin/sync.sh           把仓库同步到 alpha
 bin/build-image.sh    在 alpha 上构建 golden 镜像（task-3）
 bin/run-case.sh       Linux 用例原有生命周期（仍可在 alpha 直接调用）
 bin/test.sh           统一入口，按 cases/<id>/target 和 EXECUTION 分发
+bin/locate-assets.sh  只读发现已有本机镜像与私有配置；缺失时指向资产目录
+bin/enroll-tart-key.sh 分发基底的普通 guest 用户 RPC 公钥注入
+assets/catalog.json  alpha 私有归档的非机密位置、摘要、平台与验收范围
 bin/run-tart-case.sh  两种 Tart guest：克隆 → 执行/guest GUI → 取证 → 销毁
 bin/run-macos-case.sh 兼容旧的 macOS 入口
 cases/                用例定义（Linux 缺省；macOS 显式写 target）
@@ -86,6 +101,9 @@ Linux 用例以**发起者本人**（当前登录的非 root 用户，uid 1001�
 ## 用法
 
 ```bash
+# 0. 先检查已有镜像和配置；恢复/迁移见 docs/assets.md
+bin/locate-assets.sh
+
 # 1. 把仓库同步到 alpha（Mac 是真相源）
 bin/sync.sh
 
@@ -145,6 +163,7 @@ Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `
 
 | 文件 | 内容 |
 | --- | --- |
+| `docs/assets.md` | 本机资产发现、alpha 下载、公钥注入、导入与验收；先复用后构建 |
 | `docs/decisions.md` | 引擎选型与被否决的方案 |
 | `docs/spike-results.md` | task-2 gate 的四条判据与原始证据 |
 | `docs/cases.md` | 用例定义与三层断言 |

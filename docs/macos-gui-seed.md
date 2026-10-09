@@ -2,6 +2,10 @@
 
 面向需要在 Apple Silicon Mac 的 Tart guest 内运行 CLI、原生窗口和浏览器测试的开发者。目标是**首次准备时处理客体授权，日常从停机基底克隆后全程 CLI 执行**，不是承诺裸系统零图形配置或所有应用永远免授权。
 
+## 先确认是否需要准备
+
+已有成熟基底和分发归档时，先用 `bin/locate-assets.sh` 发现本机配置，再按 [资产发现与复用](assets.md) 从本机或 alpha 恢复。只有工具升级、权限主体变化或已有基底确实不满足用例时才执行本文准备流程。分发镜像的 guest-user RPC、公钥注入及摘要见 `assets/catalog.json`；准备期权限与日常测试权限仍严格区分。
+
 ## 基底需包含什么
 
 - 固定的 macOS、Node、pi、iTerm、agent-browser 和浏览器版本；iTerm 首次运行所需的 Command Line Tools 也要装完。

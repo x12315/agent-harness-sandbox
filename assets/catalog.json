@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "hosting": "private-file-server",
+  "baseUrl": "https://alpha.tail75aaac.ts.net:5443/",
+  "access": "Tailscale membership, read-only download account and explicitly trusted private CA",
+  "remoteManifest": "asset-manifest.json",
+  "caCertificateFingerprintSha256": "08B4D5840A410F8A6C3ECC1F0A6FCFA1E6E12D7FB3AF99C93918A58F45E5B557",
+  "assets": {
+    "macos-gui": {
+      "file": "macos-ready.tvm",
+      "platform": "darwin/arm64",
+      "bytes": 23789448634,
+      "sha256": "bb878551d8b826e523527e3a622baf30b9ed82d764517e1aae60aad0e21b01ec",
+      "guestUser": "admin",
+      "guestHostKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFsxI/bdz7smSrs6iDrSEaov1VMwGEnbkGKpKPAco/Bt",
+      "receiverEnrollment": "tart-guest-user-rpc-only",
+      "guestAgentVersion": "0.15.0",
+      "guestAgentBinarySha256": "8bbbffe09d207164cbabc06a2b2f5085e041290e75247d28db0a0e1fa852646e",
+      "guestAgentRecipe": "assets/macos/tart-guest-rpc.plist",
+      "testContractCommit": "aceed489be7e144675f4f9cf16f1e490bbece027",
+      "verifiedScope": "same-Mac clones and archive import with receiver key enrollment; four CLI/GUI cases",
+      "crossMacVerified": false,
+      "cases": ["macos-pi-discovery", "macos-desktop-smoke", "macos-iterm-smoke", "macos-browser-smoke"]
+    },
+    "linux-vmspawn": {
+      "file": "linux-vmspawn.tar.zst",
+      "platform": "linux/amd64",
+      "bytes": 1077486709,
+      "sha256": "d3d29d832f5795b8af4295ac59f69fb84e2d1e700d06bb954ac7155676a79e9f",
+      "testContractCommit": "accac803fb863367f7af9471b2e0e173dc9d4b5a",
+      "verifiedScope": "source boot-file hashes and archive roundtrip; three real VM cases",
+      "fullTenCaseSuiteVerified": false,
+      "cases": ["browser-debug-headless", "browser-debug-headed", "port-scan"]
+    }
+  }
+}
