@@ -67,6 +67,8 @@ ssh alpha 'cd ~/agent-harness-sandbox && SKIP_BUILD=1 PRIVDROP=1 bash bin/accept
 
 ## 加一条用例（你最可能要做的事）
 
+先按 `docs/cases.md` 的「用例归属」确认被测契约：本仓库维护 sandbox 回归，独立项目维护自己的测试；代跑不转移所有权。
+
 ```
 cases/<id>/cmd          # 必填：guest 里执行的命令
 cases/<id>/target       # 可选：macos-tart / linux-tart；缺省 linux-vmspawn

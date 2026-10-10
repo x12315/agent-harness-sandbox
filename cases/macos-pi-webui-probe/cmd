@@ -1,4 +1,0 @@
-set -o pipefail
-printf 'node='; node --version
-printf 'pi-web-ui='; command -v pi-web-ui || true
-printf 'browser='; command -v 'Google Chrome' || command -v chromium || command -v chrome || true
