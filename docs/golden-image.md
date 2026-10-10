@@ -12,6 +12,7 @@
 | 内核 | `linux` 7.2.7-arch1-1 + mkinitcpio 生成的 initramfs |
 | 被测对象 | **claude 2.1.283**、**pi 0.87.1**、**agent-browser 0.38.2**、**pi-web-ui 0.96.1**（版本与依赖 lockfile 在 `image-deps/` 中；`node-pty` 在 prepared prefix 和镜像导入后验证可加载） |
 | 浏览器调试 | Chromium、Xvfb、xwininfo、DejaVu 字体；**agent-browser 0.38.2** 固定在 postinst。站点/操作通过 PUSH 送入，见 `docs/browser-debug.md` |
+| 原生终端 | xterm（postinstall 固定校验 `411-1`），复用 Xvfb/xwininfo/DejaVu；生产者验证 `linux-native-terminal-smoke`，不承载使用者 clone/fork 断言 |
 | 带外 | `serial-getty@hvc0`/`ttyS0` 免密登入 root（skeleton 的 drop-in） |
 | 通道 | `vsock-mock-proxy.service`：把宿主 vsock 18788 桥成 guest 的 `127.0.0.1:18788` |
 | 网络 | **没有网卡**。不是策略禁止，是这台 VM 里不存在网络设备 |

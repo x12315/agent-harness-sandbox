@@ -1,0 +1,1 @@
+timeout 30 bash /tmp/ahsb-push/native-terminal-smoke.sh

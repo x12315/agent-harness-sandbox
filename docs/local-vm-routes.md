@@ -39,6 +39,18 @@ Tart 用例增加 `cases/<id>/display`，值为 `headed`；缺省为 `cli`。两
 
 Linux vmspawn 的程序始终也在 VM 中。当前镜像加入 Chromium/Xvfb，`browser-debug-headed` 在 guest 私有 X11 显示服务运行浏览器，检查窗口、DOM 并保存浏览器截图/HAR/trace；步骤见 `docs/browser-debug.md`。这不等于完整原生桌面；`display=headed` 的整桌面自动截图契约仅属于 Tart，不能把它当作 vmspawn 的 GUI API。
 
+## Linux 原生终端基底 smoke
+
+`linux-native-terminal-smoke` 验证 sandbox 提供的 Xvfb、xwininfo、原生 xterm（postinstall 固定校验 `411-1`） 和 DejaVu 字体：在 guest 私有 X11 显示中创建可见 xterm 窗口，由其子 shell 在真实 PTY 上执行命令，收回窗口树、窗口映射状态、PTY、尺寸与软件版本。不是浏览器里的 JavaScript xterm，也不证明完整桌面、窗口管理器、SSH 或应用的 clone/fork 功能。脚本经 `push` 注入，不烧入基础镜像。
+
+旧的默认 `~/ahsb-build` 可能缺少 GUI 包；源码配方包含工具不代表已选镜像包含它们。先检查已有启动三件套的版本与 smoke 证据；确实缺依赖时才在独立 `OUT` 构建一次，复用锁定 npm prefix 与包缓存，不覆盖共享运行树/镜像。Linux 主机上显式选择：
+
+```bash
+OUT=/absolute/prepared-image EXECUTION=local /path/to/matching-sandbox/bin/test.sh linux-native-terminal-smoke
+```
+
+保存三件套的 `SHA256SUMS`、配方摘要及本次 `dir=` 在 Git 外。测试以非 root 宿主用户和 NoNewPrivs 启动，guest shell 仍是镜像的 root；X11 与应用操作都在 guest，不申请宿主 GUI 权限。
+
 ## 避免干扰宿主工作的措施与边界
 
 Tart runner 始终不挂目录或额外磁盘、不共享剪贴板/USB，且关闭音频，不打开查看器，不发送宿主系统热键。资源设置只针对本次克隆：默认 2 CPU、4096 MiB、固定显示尺寸、不自动 refit；`TART_CPUS` / `TART_MEMORY_MB` 可覆盖。运行进程用 `nice 10` 降低调度优先级。基底保持停机，不修改宿主系统设置，结束后只停机删除本次 VM。

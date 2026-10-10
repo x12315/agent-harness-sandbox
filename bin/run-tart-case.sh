@@ -64,9 +64,12 @@ awk '$1 !~ /^#/ && $2 == "ssh-ed25519" {print "ahsb-guest " $2 " " $3; found=1; 
         echo 'no pinned ED25519 host key' >&2
         exit 2
     }
+CONTROL_SOCKET=$TEMP_DIR/ssh-control
 SSH=(ssh -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
+    -o ControlMaster=auto -o ControlPersist=30 -o "ControlPath=$CONTROL_SOCKET"
     -o HostKeyAlias=ahsb-guest -o ConnectTimeout=4 -o "UserKnownHostsFile=$TEMP_DIR/known_hosts" -i "$TART_SSH_KEY")
 SCP=(scp -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
+    -o ControlMaster=auto -o ControlPersist=30 -o "ControlPath=$CONTROL_SOCKET"
     -o HostKeyAlias=ahsb-guest -o ConnectTimeout=4 -o "UserKnownHostsFile=$TEMP_DIR/known_hosts" -i "$TART_SSH_KEY")
 created=0
 cleanup() {
@@ -79,6 +82,9 @@ cleanup() {
     if [ -n "${WATCHDOG_PID:-}" ]; then
         kill "$WATCHDOG_PID" 2>/dev/null || true
         wait "$WATCHDOG_PID" 2>/dev/null || true
+    fi
+    if [ -S "$CONTROL_SOCKET" ] && [ -n "${IP:-}" ]; then
+        "${SSH[@]}" -O exit "$GUEST_USER@$IP" >/dev/null 2>&1 || true
     fi
     if [ "$created" = 1 ] && tart get "$VM" >/dev/null 2>&1; then
         tart stop "$VM" >/dev/null 2>&1 || true

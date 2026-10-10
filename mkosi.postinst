@@ -2,6 +2,8 @@
 # mkosi postinst: copy the ABI-matched npm prefix prepared by build-image.sh.
 set -eu
 ROOT=/buildroot
+XTERM_PACKAGE=$(pacman --root="$ROOT" -Q xterm)
+[ "$XTERM_PACKAGE" = 'xterm 411-1' ] || { echo "expected xterm 411-1, got $XTERM_PACKAGE" >&2; exit 1; }
 
 : "${AHSB_NPM_PREFIX:?build-image.sh must provide the prepared npm prefix}"
 printf 'prepared npm prefix: %s\n' "$AHSB_NPM_PREFIX"

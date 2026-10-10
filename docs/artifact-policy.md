@@ -40,6 +40,8 @@ single-use download into a shared cache without adding it to this policy.
 | Linux `ahsb.raw`, kernel, initrd | Base | alpha `~/ahsb-build/` or an explicitly selected `OUT` |
 | Linux package and build caches | Cached | alpha `~/.cache/agent-harness-sandbox/{mkosi,pacman,build/npm-prefix}` and npm's own `~/.npm/` |
 | npm dependency declaration | Source | `image-deps/package.json` and `image-deps/package-lock.json` |
+| Native Linux terminal runtime | Base | `mkosi.conf`: xterm + existing Xvfb/xwininfo/fonts; `mkosi.postinst` rejects xterm versions other than `411-1`; shared by terminal consumers and producer smoke |
+| Native terminal smoke script | Injected | `bin/native-terminal-smoke.sh` via case `push`; not baked into the base |
 | Tart `pi-iterm-macos26-ready` | Base | local Tart storage; cloned per macOS case |
 | Pi observer extension and WebUI plugin | Injected | repository source; Linux `PUSH`, macOS `macos-push` |
 | Test runs, sessions, mock logs, generated summaries | Ephemeral | per-run `OUT/runs/`; destroyed or retained only as evidence |

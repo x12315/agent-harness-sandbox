@@ -88,6 +88,14 @@ EXECUTION=local /path/to/agent-harness-sandbox/bin/test.sh \
 
 依赖策略见 [artifact-policy.md](artifact-policy.md)：通用稳定工具来自 base，频繁安装的包复用包管理器 cache，项目源码通过 `push`。有 Linux 原生依赖的制品必须在目标平台准备，显式传入；不要将 Mac `node_modules` 给 Linux guest。Linux guest 无法现场下载依赖。
 
+原生终端准备由 sandbox 生产者负责：Linux vmspawn 基底提供 Xvfb、xwininfo、原生 xterm 与字体，并用 `linux-native-terminal-smoke` 验证窗口和 PTY；macOS GUI seed 用既有 `macos-iterm-smoke` 验证 iTerm 基础窗口/终端。使用者负责声明应用所需的终端、Pi 版本/API、环境以及 clone/fork 等业务断言；基础 smoke 不能替代应用兼容测试，不能为了掩盖应用兼容问题升级基底 Pi。guest SSH 环境与本地原生终端路径是不同场景，使用者应明确选择真实身份/环境，不以伪造 SSH 变量代替本地窗口测试。
+
+Tart 的 SSH/SCP 生命周期由 Sandbox 管理：每次用例使用私有连接 socket 复用握手，退出时关闭自己的连接并移除临时目录；固定客体主机公钥、专用私钥、非交互及无宿主共享限制保持不变。消费方不需要自备 SSH/SCP 包装器。连接复用不是权限授权，也不改变客体调用进程的身份。
+
+macOS ready 的 GUI 授权验收主体是 guest 的 `sshd-keygen-wrapper`，既有 smoke 用 System Events 新建 iTerm 窗口并输入命令；它不证明 iTerm 子进程发出的 Apple Events 或 iTerm 自身 AppleScript API 已授权。使用者必须按实际调用进程验收，缺权限交给管理员决定；runner 不写 TCC、SIP 或申请宿主权限。
+
+选择非默认 Linux 镜像时，在 alpha 的可信 shell 中用 `OUT=/absolute/prepared-image EXECUTION=local /path/to/matching-sandbox/bin/test.sh --project /path/to/project <id>`；项目必须已准备在该 Linux 主机，或通过既有快照工具暂存。Mac 远端入口的 `DEST` 只选择匹配源码 checkout，不选择镜像；不会把发起机任意 `OUT` 转发到远端。基底依赖与验收范围见 [local-vm-routes.md](local-vm-routes.md)。
+
 退出码和本次位置以输出为准：
 
 ```text

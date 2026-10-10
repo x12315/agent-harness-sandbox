@@ -38,6 +38,7 @@ EOF
 cat > "$TMP/bin/ssh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+printf '%s\n' "$*" >> "$FAKE_STATE/ssh-all-args"
 if [ "${!#}" = /usr/bin/true ]; then
     if [ "${FAKE_SSH_MODE:-}" = host-key-fail ]; then
         echo 'Host key verification failed' >&2
@@ -105,6 +106,10 @@ run_case success pass 2
 grep -q 'assert=macos-pi-discovery PASS' "$TMP/success.out"
 test "$(cat "$TMP/success/guest/tmp/ah.rc")" = 0
 test -f "$FAKE_STATE/deleted" && test ! -f "$FAKE_STATE/present"
+grep -q 'ControlMaster=auto.*ControlPersist=30.*ControlPath=.*ssh-control' "$FAKE_STATE/ssh-case-args"
+grep -q 'StrictHostKeyChecking=yes.*HostKeyAlias=ahsb-guest' "$FAKE_STATE/ssh-case-args"
+control_path=$(grep -o 'ControlPath=[^ ]*' "$FAKE_STATE/ssh-case-args" | cut -d= -f2-)
+test ! -e "${control_path%/*}"
 
 grep -q 'run --no-graphics --no-audio --no-clipboard --no-usb-accessories' "$FAKE_STATE/tart-calls"
 grep -q 'set .* --cpu 2 --memory 4096 --no-display-refit' "$FAKE_STATE/tart-calls"
