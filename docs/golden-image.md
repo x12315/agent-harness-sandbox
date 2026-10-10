@@ -10,7 +10,7 @@
 | 系统 | Arch Linux，完整 systemd（261/262 世代），journald、getty、preset 全套 |
 | 工具 | bash、iproute2、socat、util-linux、kmod、tmux、jq、git、curl、ca-certificates |
 | 内核 | `linux` 7.2.7-arch1-1 + mkinitcpio 生成的 initramfs |
-| 被测对象 | **claude 2.1.283**、**pi 0.87.1**（版本在 `mkosi.postinst` 里钉死） |
+| 被测对象 | **claude 2.1.283**、**pi 0.87.1**、**agent-browser 0.38.2**、**pi-web-ui 0.96.1**（版本与依赖 lockfile 在 `image-deps/` 中；`node-pty` 在 prepared prefix 和镜像导入后验证可加载） |
 | 浏览器调试 | Chromium、Xvfb、xwininfo、DejaVu 字体；**agent-browser 0.38.2** 固定在 postinst。站点/操作通过 PUSH 送入，见 `docs/browser-debug.md` |
 | 带外 | `serial-getty@hvc0`/`ttyS0` 免密登入 root（skeleton 的 drop-in） |
 | 通道 | `vsock-mock-proxy.service`：把宿主 vsock 18788 桥成 guest 的 `127.0.0.1:18788` |
@@ -24,8 +24,8 @@
 bin/sync.sh && ssh alpha 'bash ~/agent-harness-sandbox/bin/build-image.sh'
 ```
 
-构建期需要外网（pacman 装包 + npm 装两个 harness 和固定版本 agent-browser，见 `[Build] WithNetwork=yes`）；
-**运行期不需要任何网络**。
+构建期需要外网（pacman 装包 + npm 根据 `image-deps/package-lock.json` 准备固定版本的 harness、agent-browser 和 Pi Web UI，见 `[Build] WithNetwork=yes`）；
+**运行期不需要任何网络**。构建脚本默认复用 alpha 的 mkosi/pacman cache、ABI-keyed prepared npm prefix 和 npm 自己的 `~/.npm/` cache。
 
 产物落在 alpha 的 `mkosi.output/`（不进同步树）：
 
@@ -82,6 +82,5 @@ CURL_RC=0
    mkosi 之后会跑 `systemctl preset-all`，把没有在 preset 里的 unit 一律 disable ——
    两种做法都被它抹掉了（都试过，软链那份已删）。唯一有效的是
    `mkosi.skeleton/etc/systemd/system-preset/99-ahsb.preset`。
-2. **claude-code 的原生二进制要显式装。** 它是 optional 依赖，npm 在部分配置下不下；
-   装了 JS 包但没装原生二进制时，运行期才报 "claude native binary not installed"。
-   `mkosi.postinst` 里在 npm 之后显式跑了一次包内的 `install.cjs`。
+2. **claude-code 与 node-pty 必须准备为与 Node ABI 匹配的前缀。** `bin/build-image.sh`
+   在 alpha 通过 `image-deps/package-lock.json` 和 npm cache 生成 ABI-keyed prefix，并在导入 image 前验证 `pty.node`；当 Node ABI 或依赖 lockfile 变化时它会自动重建。

@@ -39,8 +39,9 @@ bin/test.sh macos-pi-discovery       # macOS Tart：克隆、执行、取证、�
 
 ## 日常循环（重要：别每次都重建镜像）
 
-实测时间账：**单条用例约 10 秒**，8 条合计约 95 秒；而**从零构建镜像要几分钟**
-（装 138 个包 + npm 装两个 harness）。所以：
+实测时间账（2026-10-10）：普通 Linux 用例约 **11 秒**，observer `PUSH` 约 **15 秒**，
+macOS Tart clone + `macos-push` 约 **9 秒**；prepared prefix 命中的基础 image build 约 **82 秒**，
+纳入 agent-browser 和锁定依赖后的 image build 为 **169 秒**，全冷构建约 **5 分钟**。所以日常迭代不能重建镜像：
 
 | 你改了什么 | 该跑什么 | 大约耗时 |
 | --- | --- | --- |
@@ -48,7 +49,7 @@ bin/test.sh macos-pi-discovery       # macOS Tart：克隆、执行、取证、�
 | macOS 用例（`cases/*/target|cmd|assert.sh`） | `bin/test.sh <id>`；基底 VM 已配置 | 视 macOS 启动时间而定 |
 | 指令层夹具 / 要送进 guest 的任务文件 | 用 `PUSH="<宿主文件>:<guest路径>"`（运行期走串口推送，**不用重建镜像**） | ~15 秒 |
 | 同上，但想跑一批 | `SKIP_BUILD=1 PRIVDROP=1 bash bin/acceptance.sh <id> <id> ...` | 每条 ~10 秒 |
-| `mkosi.conf` / `mkosi.skeleton/` / `mkosi.postinst` | 重新构建：`bash bin/build-image.sh`（或直接跑不带 SKIP_BUILD 的 acceptance） | 几分钟 |
+| `mkosi.conf` / `mkosi.skeleton/` / `mkosi.postinst` / `bin/build-image.sh` | lockfile/prefix 命中时约 169 秒；删缓存或首次新 ABI/新依赖约 5 分钟 | **先同步，再重建**；不要将它混入日常用例循环 |
 | 什么都不确定 | `PRIVDROP=1 bash bin/acceptance.sh`（含构建，全套） | 几分钟 + 95 秒 |
 
 ```bash
@@ -71,6 +72,7 @@ cases/<id>/cmd          # 必填：guest 里执行的命令
 cases/<id>/target       # 可选：macos-tart / linux-tart；缺省 linux-vmspawn
 cases/<id>/display      # Tart 可选：headed；缺省 cli，应用只在 guest
 cases/<id>/assert.sh    # 可选：销毁后跑，参数 = 产物目录（$D）
+cases/<id>/macos-push   # macOS 可选：仓库文件到 clone /tmp/ahsb-push/ 的显式清单
 cases/<id>/post.sh      # 可选：VM 还活着时跑，用于带外/现场类检查
 cases/<id>/env          # 可选：覆盖 CPUS / RAM 等变量
 ```
@@ -103,8 +105,8 @@ virtiofsd 在这台机器上起不来，所以别浪费时间试挂载。）
 
 ## 在 Linux 镜像换掉或加一个 harness
 
-Linux 镜像里现在只有 **claude 2.1.283** 与 **pi 0.87.1**，版本钉在 `mkosi.postinst` 里。
-要加别的 harness：改 `mkosi.postinst` → `ssh alpha 'bash bin/build-image.sh'` → 新写用例。
+Linux 镜像里现在有 **claude 2.1.283**、**pi 0.87.1**、**agent-browser 0.38.2** 和 **pi-web-ui 0.96.1**，版本与依赖 lockfile 在 `image-deps/` 和 `bin/build-image.sh` 中管理。
+`node-pty` 在 prepared prefix 和镜像导入后均显式验证可加载。要改变镜像内容：改 `image-deps/` 或 `mkosi.postinst` → `ssh alpha 'bash bin/build-image.sh'` → 新写用例。
 pi 的 provider 配置烧在 `mkosi.skeleton/root/.pi/agent/models.json`（指向 mock）。
 
 ## 看 Linux 结果与排查

@@ -1,0 +1,11 @@
+{
+  "name": "agent-harness-sandbox-image-dependencies",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.283",
+    "@earendil-works/pi-coding-agent": "0.87.1",
+    "agent-browser": "0.38.2",
+    "pi-web-ui": "0.96.1"
+  }
+}

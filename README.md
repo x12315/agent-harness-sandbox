@@ -85,7 +85,7 @@ docs/                 决策记录、清理记录、盲区声明
 | Linux 用例：一台 Linux 主机（KVM 裸机，或开了嵌套虚拟化） | `/dev/kvm`、`/dev/vhost-vsock` 可读写；systemd ≥ 260（`--ephemeral`）；QEMU + OVMF。**不需要 root** |
 | macOS 用例：Apple Silicon Mac | macOS 13+、Tart、已配置且停机的本地 macOS 基底 VM；前置条件见 `docs/macos-tart.md` |
 | Linux 用例：一个 ssh 可达的别名 | 本文档统一写作 `alpha`，只是本机的别名；`REMOTE=<你的别名> bin/sync.sh` 可覆盖 |
-| Linux 构建期有外网 | mkosi 装包 + npm 装两个 harness 与固定版本的 agent-browser；Linux 运行期 VM 无网卡。macOS 备好基底 VM 后，测试时默认 NAT |
+| Linux 构建期有外网 | mkosi 装包 + npm 根据 `image-deps/package-lock.json` 准备 Claude、Pi、agent-browser 与 Pi Web UI；Linux 运行期 VM 无网卡。macOS 备好基底 VM 后，测试时默认 NAT |
 | （可选）你自己的 `~/.agents/AGENTS.md` | 有它，指令层用例验证的是**你的真实指令层**；没有则用仓库里的中性夹具，用例照样全绿 |
 
 Linux vmspawn 可在本机 Linux 构建与运行，也可从 Mac 调远端；两种 Tart guest 在 Apple Silicon Mac 上运行。
@@ -126,7 +126,7 @@ EXECUTION=local bin/test.sh macos-pi-discovery
 ```
 
 用例**定义**在仓库里（`cases/<case-id>/`：`cmd`、可选的 `target`/`assert.sh`；Linux
-还支持 `post.sh`/`env`）。Linux 产物在 alpha 的 `~/ahsb-build/runs/<case-id>/<run-id>/`，
+还支持 `post.sh`/`env`；macOS 支持 `macos-push` 受控源码注入）。Linux 产物在 alpha 的 `~/ahsb-build/runs/<case-id>/<run-id>/`，
 macOS 产物在 Mac 的 `~/ahsb-build/runs/<case-id>/<run-id>/`，均在同步树之外。
 两个后端都写 `guest/tmp/ah.{out,err,rc}`；Linux 额外写串口、monitor、mock 证据，
 macOS 写 VM 日志。Linux `console.txt` 是可能被 tmux 回滚截断的快照，完整串口字节在 `vm.log`，归档由它解码；已存在的 `/tmp/ah-artifacts/` 也会收回。`bin/acceptance.sh` 目前仍只验收 Linux。
@@ -176,6 +176,7 @@ Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `
 | `docs/local-vm-routes.md` | 本机 Linux/macOS 路由、guest 有头测试和不干扰工作桌面的边界 |
 | `docs/browser-debug.md` | 独立浏览器站点、无头/客体 Xvfb、有状态操作与 PNG/HAR/trace 证据 |
 | `docs/golden-image.md` | golden 镜像定义与验收 |
+| `docs/artifact-policy.md` | 基础镜像、clone 注入、包管理器缓存和现场下载的边界 |
 | `docs/host-prereqs.md` | alpha 前置条件、两处临时 hack、环境坑清单 |
 | `docs/alpha-cleanup.md` | 上一版（microsandbox）产物的回收记录 |
 
