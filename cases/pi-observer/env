@@ -1,0 +1,2 @@
+PUSH=pi-observer/observer.ts:/work/pi-observer.ts
+MOCK_DELAY=0

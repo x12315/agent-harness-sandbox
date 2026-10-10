@@ -15,6 +15,7 @@ REQUESTS = os.environ.get(
     "MOCK_REQUESTS", os.path.join(os.path.dirname(os.path.abspath(__file__)), "requests.jsonl")
 )
 REPLY = os.environ.get("MOCK_REPLY", "MOCK_OK")
+DELAY = float(os.environ.get("MOCK_DELAY", "0"))
 
 
 # 指令层里那条"机器可读"的规则：出现在请求正文里就说明指令层被注入了。
@@ -127,6 +128,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": {"message": f"no mock route for {route}"}})
 
     def _anthropic(self, body, raw=b""):
+        if DELAY > 0:
+            time.sleep(DELAY)
         model = body.get("model") or "mock-model"
         if not body.get("stream"):
             self._send(200, {
@@ -153,6 +156,8 @@ class Handler(BaseHTTPRequestHandler):
         self._sse("message_stop", {"type": "message_stop"})
 
     def _openai(self, body, raw=b""):
+        if DELAY > 0:
+            time.sleep(DELAY)
         model = body.get("model") or "mock-model"
         if not body.get("stream"):
             self._send(200, {"id": "cmpl_mock", "object": "chat.completion", "model": model,
