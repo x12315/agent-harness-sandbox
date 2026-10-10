@@ -7,7 +7,8 @@ umask 077
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CASE_ID=${1:?usage: bin/run-tart-case.sh <case-id>}
 [[ $CASE_ID =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "invalid case id: $CASE_ID" >&2; exit 2; }
-CASE_DIR=$ROOT/cases/$CASE_ID
+CASE_DIR=${AHSB_CASE_DIR:-$ROOT/cases/$CASE_ID}
+INPUT_ROOT=${AHSB_INPUT_ROOT:-$ROOT}
 [ -f "$CASE_DIR/cmd" ] || { echo "missing case: $CASE_ID" >&2; exit 2; }
 TARGET=$(head -n 1 "$CASE_DIR/target" 2>/dev/null || true)
 case "$TARGET" in
@@ -55,6 +56,7 @@ mkdir "$RUN_DIR" || { echo "run directory already exists or is unavailable: $RUN
 mkdir -p "$RUN_DIR/guest/tmp"
 printf '%s\n' "$VM" > "$RUN_DIR/vm-name.txt"
 cp "$CASE_DIR/cmd" "$RUN_DIR/command.txt"
+[ -z "${AHSB_INPUT_ROOT:-}" ] || cp "$INPUT_ROOT/project-source.sha256" "$RUN_DIR/project-source.sha256"
 TEMP_DIR=$(mktemp -d)
 awk '$1 !~ /^#/ && $2 == "ssh-ed25519" {print "ahsb-guest " $2 " " $3; found=1; exit} END {if (!found) exit 1}' \
     "$TART_KNOWN_HOSTS" > "$TEMP_DIR/known_hosts" || {
@@ -132,8 +134,8 @@ push_case_file() {
     case "$source_rel" in /*|*'..'*) echo "macos-push source must be repository-relative: $source_rel" >&2; exit 2;; esac
     case "$destination" in /tmp/ahsb-push/*) ;; *) echo "macos-push destination must be under /tmp/ahsb-push: $destination" >&2; exit 2;; esac
     case "$destination" in *'..'*) echo "macos-push destination must not contain ..: $destination" >&2; exit 2;; esac
-    source=$(realpath "$ROOT/$source_rel")
-    case "$source" in "$ROOT"/*) ;; *) echo "macos-push source escapes repository: $source_rel" >&2; exit 2;; esac
+    source=$(realpath "$INPUT_ROOT/$source_rel")
+    case "$source" in "$INPUT_ROOT"/*) ;; *) echo "push source escapes input root: $source_rel" >&2; exit 2;; esac
     [ -f "$source" ] || { echo "macos-push source is not a file: $source_rel" >&2; exit 2; }
     parent=${destination%/*}
     "${SSH[@]}" "$GUEST_USER@$IP" /bin/mkdir -p "$parent" < /dev/null
@@ -141,11 +143,15 @@ push_case_file() {
     shasum -a 256 "$source" | sed "s#  .*#  $source_rel -> $destination#" >> "$RUN_DIR/macos-push.sha256"
 }
 
-if [ "$GUEST_OS" = darwin ] && [ -f "$CASE_DIR/macos-push" ]; then
+PUSH_MANIFEST=$CASE_DIR/push
+if [ ! -f "$PUSH_MANIFEST" ] && [ "$GUEST_OS" = darwin ]; then
+    PUSH_MANIFEST=$CASE_DIR/macos-push
+fi
+if [ -f "$PUSH_MANIFEST" ]; then
     while IFS= read -r spec || [ -n "$spec" ]; do
         case "$spec" in ''|'#'*) continue;; esac
         push_case_file "$spec"
-    done < "$CASE_DIR/macos-push"
+    done < "$PUSH_MANIFEST"
 fi
 
 INPUT=$CASE_DIR/cmd

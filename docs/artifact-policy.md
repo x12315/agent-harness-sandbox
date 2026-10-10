@@ -23,7 +23,7 @@ Put a dependency in a base only when all apply:
 4. It contains no user session, credential, personal preference, or project code.
 
 Use injected files for code under active development. An extension or UI plugin
-must not become a base dependency merely because a test needs it once.
+must not become a base dependency merely because a test needs it once. Consumer-owned cases and inputs stay in the consumer repository; `bin/test.sh --project` snapshots only the selected case and its declared inputs outside both repositories. See [consumer-tests.md](consumer-tests.md).
 
 Use package-manager caches for registry artifacts. Do not vendor `node_modules`,
 pacman package files, or native build trees into Git. A cache miss may download

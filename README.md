@@ -98,6 +98,16 @@ Linux 用例以**发起者本人**（当前登录的非 root 用户，uid 1001�
 `PRIVDROP=1` 验收的零特权保证来自 `NoNewPrivs`（连 `sudo` 都拒绝以 root 运行），
 而不是来自账号 —— 证据与残余风险见 `docs/BLINDSPOTS.md` 第四节。
 
+## 接入使用者项目的测试
+
+测试定义和断言留在使用者自己的仓库（`tests/sandbox/<case-id>/`）：
+
+```bash
+/path/to/agent-harness-sandbox/bin/test.sh --project /path/to/my-project smoke
+```
+
+`push` 清单声明项目输入，三种 backend 共用；远端执行临时导入，不需要将项目复制进 sandbox 的 `cases/`。信任边界、依赖准备、双平台运行和产物约定见 [使用者测试接入](docs/consumer-tests.md)。内置 `bin/test.sh <id>` 入口不变。
+
 ## 用法
 
 ```bash
@@ -167,6 +177,7 @@ Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `
 | `docs/decisions.md` | 引擎选型与被否决的方案 |
 | `docs/spike-results.md` | task-2 gate 的四条判据与原始证据 |
 | `docs/cases.md` | 用例定义与三层断言 |
+| `docs/consumer-tests.md` | 使用者自有测试的接入、项目输入暂存、依赖准备和产物读取 |
 | `docs/instruction-layer.md` | 指令层验证的正反例、投影方式与不可测部分 |
 | `docs/isolation-cases.md` | 越界/破坏用例、结论与每条用例暴露的盲区 |
 | `docs/acceptance.md` | Linux 从零复现的验收记录（环境、哈希、8 条用例结果） |

@@ -28,7 +28,8 @@ CPUS=${CPUS:-2}
 RAM=${RAM:-2G}
 
 CASE_ID=${1:?usage: run-case.sh <case-id> ['<一行命令>']}; shift
-CASE_DIR=$TESTBED/cases/$CASE_ID
+CASE_DIR=${AHSB_CASE_DIR:-$TESTBED/cases/$CASE_ID}
+INPUT_ROOT=${AHSB_INPUT_ROOT:-$TESTBED}
 
 # 产物目录必须在同步树之外，而且必须在第一次使用之前定义：
 # bin/sync.sh 是整目录替换，产物留在 cases/<id>/ 下会被同步连根删掉。
@@ -42,6 +43,9 @@ PUSH=${PUSH:-}
 # 用例可以用一份 env 覆盖默认值（PUSH / CPUS / RAM 等）
 # shellcheck disable=SC1091
 [ -f "$CASE_DIR/env" ] && . "$CASE_DIR/env"
+if [ -n "${AHSB_CASE_DIR:-}" ] && [ -n "$PUSH" ]; then
+    echo 'project cases must declare inputs in push, not env PUSH' >&2; exit 2
+fi
 
 # 命令写在 cases/<id>/cmd 里（这样用例是被 git 管理的、可重跑的定义），
 # 也可以临时用参数传，方便一次性调试。
@@ -61,6 +65,7 @@ fi
 mkdir -p "$RUN_DIR/guest"
 printf '%s\n' "$CMD" >"$RUN_DIR/command.txt"
 [ -z "${SOURCE_MANIFEST:-}" ] || cp "$SOURCE_MANIFEST" "$RUN_DIR/source.sha256"
+[ -z "${AHSB_INPUT_ROOT:-}" ] || cp "$INPUT_ROOT/project-source.sha256" "$RUN_DIR/project-source.sha256"
 
 VM="ahsb-${CASE_ID}-$(date +%s)-$$"
 SES="ahsb-$CASE_ID-$$"
@@ -138,7 +143,7 @@ PRELUDE="$PRELUDE CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
 # （踩过：6 KB 的夹具被切掉尾巴，哨兵正好在尾巴上，断言就报"夹具没被加载"）。
 push_file() {
     local src=$1 dst=$2 f b64 chunk
-    case "$src" in /*) f=$src ;; *) f=$TESTBED/$src ;; esac
+    case "$src" in /*) f=$src ;; *) f=$INPUT_ROOT/$src ;; esac
     [ -f "$f" ] || { echo "PUSH 源文件不存在：$f" >&2; exit 2; }
     b64=$(base64 -w0 "$f" 2>/dev/null || base64 "$f" | tr -d '\n')
     local tmp=/tmp/.ah-push.b64
@@ -155,6 +160,12 @@ push_file() {
 for spec in $PUSH; do
     push_file "${spec%%:*}" "${spec#*:}"
 done
+if [ -f "$CASE_DIR/push" ]; then
+    while IFS= read -r spec || [ -n "$spec" ]; do
+        case "$spec" in ''|'#'*) continue;; esac
+        push_file "${spec%%:*}" "${spec#*:}"
+    done < "$CASE_DIR/push"
+fi
 
 REMOTE="$PRELUDE; mkdir -p /work; cd /work; { $CMD ; } >/tmp/ah.out 2>/tmp/ah.err; echo \$? >/tmp/ah.rc;"
 # 只把真实存在的路径交给 tar：harness 还没跑过时 ~/.claude 不存在，
