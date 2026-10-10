@@ -29,7 +29,7 @@ VM_MEMORY=${TART_MEMORY_MB:-4096}
 : "${TART_KNOWN_HOSTS:?set TART_KNOWN_HOSTS to its pinned host key file}"
 CASE_TIMEOUT=${CASE_TIMEOUT:-300}
 [[ $CASE_TIMEOUT =~ ^[1-9][0-9]*$ ]] || { echo 'CASE_TIMEOUT must be a positive number of seconds' >&2; exit 2; }
-for tool in tart ssh awk nice base64 od; do command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 2; }; done
+for tool in tart ssh scp awk nice base64 od realpath shasum; do command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 2; }; done
 [ -f "$TART_SSH_KEY" ] && [ -r "$TART_SSH_KEY" ] && [ -s "$TART_SSH_KEY" ] || {
     echo "guest SSH private key missing, empty, or unreadable: $TART_SSH_KEY" >&2; exit 2;
 }
@@ -63,6 +63,8 @@ awk '$1 !~ /^#/ && $2 == "ssh-ed25519" {print "ahsb-guest " $2 " " $3; found=1; 
         exit 2
     }
 SSH=(ssh -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
+    -o HostKeyAlias=ahsb-guest -o ConnectTimeout=4 -o "UserKnownHostsFile=$TEMP_DIR/known_hosts" -i "$TART_SSH_KEY")
+SCP=(scp -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
     -o HostKeyAlias=ahsb-guest -o ConnectTimeout=4 -o "UserKnownHostsFile=$TEMP_DIR/known_hosts" -i "$TART_SSH_KEY")
 created=0
 cleanup() {
@@ -119,6 +121,32 @@ for _ in $(seq 1 60); do
     sleep 2
 done
 [ "$ready" = 1 ] || { echo "guest SSH unavailable; see $RUN_DIR/ssh-check.err and vm.log" >&2; exit 1; }
+
+push_case_file() {
+    local spec=$1 source_rel destination source parent
+    source_rel=${spec%%:*}
+    destination=${spec#*:}
+    [ "$source_rel" != "$spec" ] && [ -n "$source_rel" ] && [ -n "$destination" ] || {
+        echo "invalid macos-push entry: $spec" >&2; exit 2;
+    }
+    case "$source_rel" in /*|*'..'*) echo "macos-push source must be repository-relative: $source_rel" >&2; exit 2;; esac
+    case "$destination" in /tmp/ahsb-push/*) ;; *) echo "macos-push destination must be under /tmp/ahsb-push: $destination" >&2; exit 2;; esac
+    case "$destination" in *'..'*) echo "macos-push destination must not contain ..: $destination" >&2; exit 2;; esac
+    source=$(realpath "$ROOT/$source_rel")
+    case "$source" in "$ROOT"/*) ;; *) echo "macos-push source escapes repository: $source_rel" >&2; exit 2;; esac
+    [ -f "$source" ] || { echo "macos-push source is not a file: $source_rel" >&2; exit 2; }
+    parent=${destination%/*}
+    "${SSH[@]}" "$GUEST_USER@$IP" /bin/mkdir -p "$parent" < /dev/null
+    "${SCP[@]}" "$source" "$GUEST_USER@$IP:$destination" < /dev/null
+    shasum -a 256 "$source" | sed "s#  .*#  $source_rel -> $destination#" >> "$RUN_DIR/macos-push.sha256"
+}
+
+if [ "$GUEST_OS" = darwin ] && [ -f "$CASE_DIR/macos-push" ]; then
+    while IFS= read -r spec || [ -n "$spec" ]; do
+        case "$spec" in ''|'#'*) continue;; esac
+        push_case_file "$spec"
+    done < "$CASE_DIR/macos-push"
+fi
 
 INPUT=$CASE_DIR/cmd
 if [ "$DISPLAY_MODE" = headed ]; then

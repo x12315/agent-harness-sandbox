@@ -1,0 +1,1 @@
+test "$(cat /tmp/ahsb-push/fixture.txt)" = macos-push-smoke

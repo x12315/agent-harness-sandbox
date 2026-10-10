@@ -52,8 +52,9 @@ runner 从基底克隆出本次独立 VM，不挂宿主文件、关闭剪贴板�
 | `cases/<id>/target` | 缺省 `linux-vmspawn`；显式 `macos-tart` | 每例只选一种环境 |
 | `cmd` | guest 要执行的命令 | Linux `/work` 的 shell 一行；macOS guest 用户的登录 zsh 脚本 |
 | `assert.sh` | 销毁 VM 后接收产物目录 `$1` | 公共 `guest/tmp/ah.{out,err,rc}`；串口/mock 仅 Linux 有 |
+| `macos-push` | 仅 macOS 可选 | `仓库相对源:/tmp/ahsb-push/目标`；host key 校验后复制到 disposable clone 并记录 SHA-256 |
 
-不要把 Linux `PUSH`、`post.sh` 或 vsock mock 当成 macOS API；它们仍是 Linux 后端能力。新的 GUI 用例应检查 guest 中实际窗口/进程和会话状态，并保存可复核的证据，而不只检查 `open` 的退出码。
+不要把 Linux `PUSH`、`post.sh` 或 vsock mock 当成 macOS API；它们仍是 Linux 后端能力。macOS 的源码注入只用 `macos-push`，它拒绝仓库外来源和 `/tmp/ahsb-push/` 外的目标路径。新的 GUI 用例应检查 guest 中实际窗口/进程和会话状态，并保存可复核的证据，而不只检查 `open` 的退出码。
 
 早期原 CLI 基底的临时探针停在密码登录页，手动登录后曾遇到 VNC 黑屏；`open` 成功及进程存在并未计入 GUI 通过。后续只在独立克隆配置自动登录、客体 TCC、工具及首次运行偏好，制作新的停机 GUI 基底；正式 runner 的新克隆在不使用 VNC 的情况下取得真实窗口截图。旧失败证据保留，新旧基底的结论不能混用。
 
