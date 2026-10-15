@@ -67,6 +67,8 @@ mkosi.skeleton/       烧进镜像的静态文件：vsock shim、sshd 配置、A
 mock/mock_llm.py      确定性 mock 模型 API（Anthropic + OpenAI 双协议，逐请求写 JSONL）
 bin/sync.sh           把仓库同步到 alpha
 bin/build-image.sh    在 alpha 上构建 golden 镜像（task-3）
+bin/prepare-tart-runtime.sh 在 macOS 私有克隆准备锁定依赖并保存独立停机基底
+bin/guest-runtime.mjs  按项目 requires.json 检查真实 CLI/原生 PTY，不下载或升级
 bin/run-case.sh       Linux 用例原有生命周期（仍可在 alpha 直接调用）
 bin/test.sh           统一入口，按 cases/<id>/target 和 EXECUTION 分发
 bin/locate-assets.sh  只读发现已有本机镜像与私有配置；缺失时指向资产目录
@@ -106,7 +108,9 @@ Linux 用例以**发起者本人**（当前登录的非 root 用户，uid 1001�
 /path/to/agent-harness-sandbox/bin/test.sh --project /path/to/my-project smoke
 ```
 
-`push` 清单声明项目输入，三种 backend 共用；远端执行临时导入，不需要将项目复制进 sandbox 的 `cases/`。信任边界、依赖准备、双平台运行和产物约定见 [使用者测试接入](docs/consumer-tests.md)。内置 `bin/test.sh <id>` 入口不变。
+`push` 清单声明项目输入，三种 backend 共用；远端执行临时导入，不需要将项目复制进 sandbox 的 `cases/`。
+项目用 `requires.json` 声明通用工具的精确版本，sandbox 在业务执行前验证实际 CLI 和原生模块；缺项返回 `NOT_READY`，不现场安装。
+macOS 用 `bin/prepare-tart-runtime.sh <new-base>` 在独立克隆一次准备运行时并保存新基底；旧基底不改，项目扩展不烧入公共环境。信任边界、依赖准备、双平台运行和产物约定见 [使用者测试接入](docs/consumer-tests.md)。内置 `bin/test.sh <id>` 入口不变。
 
 ## 用法
 
@@ -178,6 +182,7 @@ Linux 同名用例和 acceptance 重跑均保留历史产物；以本次输出 `
 | `docs/spike-results.md` | task-2 gate 的四条判据与原始证据 |
 | `docs/cases.md` | 用例定义与三层断言 |
 | `docs/consumer-tests.md` | 使用者自有测试的接入、项目输入暂存、依赖准备和产物读取 |
+| `docs/runtime-acceptance.md` | 双平台运行时、Observer 独立/内存会话与宿主控制面验收证据及未完成项 |
 | `docs/instruction-layer.md` | 指令层验证的正反例、投影方式与不可测部分 |
 | `docs/isolation-cases.md` | 越界/破坏用例、结论与每条用例暴露的盲区 |
 | `docs/acceptance.md` | Linux 从零复现的验收记录（环境、哈希、8 条用例结果） |

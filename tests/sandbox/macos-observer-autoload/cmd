@@ -1,0 +1,40 @@
+set -eu
+job=$(mktemp -d)
+export PI_CODING_AGENT_DIR="$job/agent"
+export PI_WEB_DATA_DIR="$job/web"
+export PI_OBSERVER_DIR="$PI_CODING_AGENT_DIR/observer"
+bash /tmp/ahsb-push/pi-observer/install-guest.sh
+bash /tmp/ahsb-push/pi-observer/install-guest.sh
+node /tmp/ahsb-push/pi-observer/tests/agents.mjs > "$job/agents.log" 2>&1 &
+agents=$!
+trap 'kill "$agents" 2>/dev/null || true; wait "$agents" 2>/dev/null || true; tail -c 16000 "$job/agents.log"' EXIT
+for _ in $(seq 1 150); do
+    [ ! -f "$PI_CODING_AGENT_DIR/agents-ready" ] || break
+    kill -0 "$agents"
+    sleep 0.1
+done
+test -f "$PI_CODING_AGENT_DIR/agents-ready"
+echo 'observer-autoload-two-agents PASS'
+for _ in $(seq 1 150); do
+    count=$(find "$PI_OBSERVER_DIR" -name '*.summary.json' | wc -l | tr -d ' ')
+    [ "$count" = 0 ] || break
+    sleep 0.1
+done
+node - <<'NODE'
+const fs=require('node:fs');
+const dir=process.env.PI_OBSERVER_DIR;
+const names=fs.readdirSync(dir);
+const summaries=names.filter(name=>name.endsWith('.summary.json')).map(name=>JSON.parse(fs.readFileSync(dir+'/'+name)));
+if(!summaries.some(summary=>summary.text==='Two Pi agents are working in the disposable guest.'))throw Error('automatic independent summary missing');
+const snapshots=names.filter(name=>name.endsWith('.snapshot.json')).map(name=>JSON.parse(fs.readFileSync(dir+'/'+name)));
+if(snapshots.length!==2 || snapshots.some(snapshot=>!snapshot.active))throw Error('expected two active agents');
+console.log('observer-automatic-summary PASS');
+NODE
+kill "$agents"
+wait "$agents"
+for _ in $(seq 1 50); do
+    [ "$(find "$PI_OBSERVER_DIR" -type f | wc -l | tr -d ' ')" != 0 ] || break
+    sleep 0.1
+done
+test "$(find "$PI_OBSERVER_DIR" -type f | wc -l | tr -d ' ')" = 0
+echo 'observer-shutdown-cleanup PASS'

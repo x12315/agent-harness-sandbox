@@ -4,7 +4,8 @@ import { type Message, uuidv7 } from "@earendil-works/pi-ai";
 import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const DEFAULT_INTERVAL_MINUTES = 5;
-const SNAPSHOT_MAX_AGE_MS = 60 * 60 * 1000;
+const HEARTBEAT_INTERVAL_MS = 15_000;
+const SNAPSHOT_MAX_AGE_MS = 90_000;
 const MAX_RECENT_EVENTS = 16;
 const MAX_TEXT_LENGTH = 320;
 const MAX_SNAPSHOT_TEXT_LENGTH = 2400;
@@ -42,6 +43,9 @@ interface ObserverSummary {
 
 interface ObserverState extends ObserverSnapshot {
 	reportTimer?: ReturnType<typeof setInterval>;
+	heartbeatTimer?: ReturnType<typeof setInterval>;
+	reporting?: boolean;
+	reportController?: AbortController;
 	shuttingDown?: boolean;
 	writeQueue: Promise<void>;
 }
@@ -81,8 +85,8 @@ function sessionFile(ctx: ExtensionContext): string | undefined {
 function createSnapshot(ctx: ExtensionContext): ObserverState {
 	const now = new Date().toISOString();
 	const file = sessionFile(ctx);
-	const id = `${process.pid}-${file ? path.basename(file, ".jsonl") : uuidv7()}`;
-	return {
+	const id = `${process.pid}-${ctx.sessionManager.getSessionId()}`;
+	const state: ObserverState = {
 		id,
 		pid: process.pid,
 		cwd: ctx.cwd,
@@ -95,6 +99,14 @@ function createSnapshot(ctx: ExtensionContext): ObserverState {
 		recentEvents: [],
 		writeQueue: Promise.resolve(),
 	};
+	state.heartbeatTimer = setInterval(() => {
+		if (state.shuttingDown) return;
+		try { ctx.sessionManager.getSessionId(); }
+		catch { void finishState(state); return; }
+		state.updatedAt = new Date().toISOString();
+		persist(state);
+	}, HEARTBEAT_INTERVAL_MS);
+	return state;
 }
 
 function snapshotPath(state: ObserverSnapshot): string {
@@ -106,7 +118,7 @@ function summaryPath(state: ObserverSnapshot): string {
 }
 
 function publicSnapshot(state: ObserverState): ObserverSnapshot {
-	const { reportTimer: _timer, shuttingDown: _shuttingDown, writeQueue: _queue, ...snapshot } = state;
+	const { reportTimer: _timer, heartbeatTimer: _heartbeat, reporting: _reporting, reportController: _controller, shuttingDown: _shuttingDown, writeQueue: _queue, ...snapshot } = state;
 	return snapshot;
 }
 
@@ -119,6 +131,7 @@ function record(state: ObserverState, kind: string, detail: string): void {
 }
 
 function persist(state: ObserverState): void {
+	if (state.shuttingDown) return;
 	const snapshot = JSON.stringify(publicSnapshot(state), null, 2);
 	const destination = snapshotPath(state);
 	state.writeQueue = state.writeQueue
@@ -146,7 +159,7 @@ async function readSnapshots(): Promise<ObserverSnapshot[]> {
 		if (!name.endsWith(".snapshot.json")) continue;
 		try {
 			const parsed = JSON.parse(await fs.promises.readFile(path.join(observerDirectory(), name), "utf8")) as ObserverSnapshot;
-			if (!parsed.id || Date.parse(parsed.updatedAt) < cutoff) continue;
+			if (!parsed.id || !Number.isFinite(Date.parse(parsed.updatedAt)) || Date.parse(parsed.updatedAt) < cutoff) continue;
 			snapshots.push(parsed);
 		} catch {
 			// A partially written or stale snapshot is not useful to an observer.
@@ -164,13 +177,16 @@ function localSummary(snapshots: ObserverSnapshot[]): string {
 	}
 	const details = active.map((snapshot) => {
 		const subject = snapshot.lastTool ? `正在${snapshot.phase}（${snapshot.lastTool}）` : snapshot.phase;
-		return snapshot.pid === process.pid ? `当前会话${subject}` : `子会话 ${snapshot.pid} ${subject}`;
+		return `会话 ${snapshot.id} ${subject}`;
 	});
 	return `${details.join("；")}。`;
 }
 
 function summaryInput(snapshots: ObserverSnapshot[]): string {
-	const compact = snapshots.map((snapshot) => ({
+	const compact = [...snapshots]
+		.sort((a, b) => Number(b.active) - Number(a.active) || Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+		.map((snapshot) => ({
+		id: snapshot.id,
 		pid: snapshot.pid,
 		cwd: snapshot.cwd,
 		active: snapshot.active,
@@ -180,12 +196,30 @@ function summaryInput(snapshots: ObserverSnapshot[]): string {
 		lastToolArgs: snapshot.lastToolArgs,
 		lastToolError: snapshot.lastToolError,
 		lastAssistantText: snapshot.lastAssistantText,
-		recentEvents: snapshot.recentEvents.slice(-8),
+		recentEvents: snapshot.recentEvents.slice(-2),
 	}));
-	return truncate(JSON.stringify(compact), MAX_SNAPSHOT_TEXT_LENGTH);
+	const phases = new Map<string, number>();
+	for (const snapshot of snapshots.filter((snapshot) => snapshot.active)) {
+		const phase = truncate(snapshot.phase || "unknown", 48);
+		phases.set(phase, (phases.get(phase) || 0) + 1);
+	}
+	const phaseCounts = [...phases].sort((a, b) => b[1] - a[1]);
+	const facts = {
+		observedSessions: snapshots.length,
+		activeSessions: snapshots.filter((snapshot) => snapshot.active).length,
+		phases: Object.fromEntries(phaseCounts.slice(0, 6)),
+		otherActivePhases: phaseCounts.slice(6).reduce((sum, [, count]) => sum + count, 0),
+		sessions: compact,
+		omittedSessions: 0,
+	};
+	while (JSON.stringify(facts).length > MAX_SNAPSHOT_TEXT_LENGTH && facts.sessions.length) {
+		facts.sessions.pop();
+		facts.omittedSessions++;
+	}
+	return JSON.stringify(facts);
 }
 
-async function generateSummary(ctx: ExtensionContext, snapshots: ObserverSnapshot[]): Promise<string> {
+async function generateSummary(ctx: ExtensionContext, snapshots: ObserverSnapshot[], signal: AbortSignal): Promise<string> {
 	if (!ctx.model) return localSummary(snapshots);
 	const observation = summaryInput(snapshots);
 	const userMessage: Message = {
@@ -206,7 +240,7 @@ async function generateSummary(ctx: ExtensionContext, snapshots: ObserverSnapsho
 				systemPrompt: "你只负责把旁路观察数据压缩成一句准确的状态摘要。",
 				messages: [userMessage],
 			},
-			{ cacheRetention: "none", sessionId: uuidv7() },
+			{ cacheRetention: "none", sessionId: uuidv7(), signal },
 		);
 		const text = response.content
 			.filter((part): part is { type: "text"; text: string } => part.type === "text")
@@ -242,39 +276,76 @@ function notify(ctx: ExtensionContext, text: string): void {
 }
 
 async function report(ctx: ExtensionContext, state: ObserverState): Promise<void> {
-	const snapshots = await readSnapshots();
-	const summary = await generateSummary(ctx, snapshots.length > 0 ? snapshots : [publicSnapshot(state)]);
-	if (state.shuttingDown) return;
-	persistSummary(state, summary);
-	notify(ctx, summary);
+	if (state.reporting || state.shuttingDown) return;
+	state.reporting = true;
+	const controller = new AbortController();
+	state.reportController = controller;
+	const timeout = setTimeout(() => controller.abort("summary timeout"), 45_000);
+	try {
+		const snapshots = await readSnapshots();
+		const summary = await generateSummary(ctx, snapshots.length > 0 ? snapshots : [publicSnapshot(state)], controller.signal);
+		if (state.shuttingDown || state.reportController !== controller) return;
+		persistSummary(state, summary);
+		notify(ctx, summary);
+	} finally {
+		clearTimeout(timeout);
+		state.reporting = false;
+		if (state.reportController === controller) state.reportController = undefined;
+	}
 }
 
-function startReporting(ctx: ExtensionContext, state: ObserverState): void {
-	const minutes = Number(process.env.PI_OBSERVER_INTERVAL_MINUTES || DEFAULT_INTERVAL_MINUTES);
-	if (!Number.isFinite(minutes) || minutes <= 0) return;
+function startReporting(ctx: ExtensionContext, state: ObserverState, minutes: number): void {
 	state.reportTimer = setInterval(() => {
-		if (state.active) void report(ctx, state);
+		if (state.active) void report(ctx, state).catch(() => undefined);
 	}, minutes * 60 * 1000);
 }
 
 function stopReporting(state: ObserverState): void {
 	if (state.reportTimer) clearInterval(state.reportTimer);
 	state.reportTimer = undefined;
+	state.reportController?.abort("reporting stopped");
+	state.reportController = undefined;
+}
+
+async function finishState(state: ObserverState): Promise<void> {
+	state.shuttingDown = true;
+	stopReporting(state);
+	if (state.heartbeatTimer) clearInterval(state.heartbeatTimer);
+	if (process.env.PI_OBSERVER_KEEP_SNAPSHOTS === "1") return;
+	const files = [snapshotPath(state), summaryPath(state)];
+	state.writeQueue = state.writeQueue
+		.then(() => Promise.all(files.map((file) => fs.promises.rm(file, { force: true }))))
+		.catch(() => undefined);
+	await state.writeQueue;
 }
 
 export default function (pi: ExtensionAPI): void {
 	let state: ObserverState | undefined;
+	let intervalMinutes = Number(process.env.PI_OBSERVER_INTERVAL_MINUTES || DEFAULT_INTERVAL_MINUTES);
+	let automaticReports = Number.isFinite(intervalMinutes) && intervalMinutes > 0;
 
-	pi.on("session_start", (_event, ctx) => {
+	const reset = (_event: unknown, ctx: ExtensionContext) => {
+		const previous = state;
 		state = createSnapshot(ctx);
+		if (previous) {
+			stopReporting(previous);
+			if (previous.heartbeatTimer) clearInterval(previous.heartbeatTimer);
+			previous.shuttingDown = true;
+			if (previous.id === state.id) state.writeQueue = previous.writeQueue;
+			else void finishState(previous);
+		}
 		persist(state);
-	});
+	};
+	pi.on("session_start", reset);
+	pi.on("session_switch", reset);
+	pi.on("session_fork", reset);
 
 	pi.on("agent_start", (_event, ctx) => {
+		if (state?.shuttingDown) return;
 		if (!state) state = createSnapshot(ctx);
 		state.active = true;
 		state.phase = "thinking";
-		if (!state.reportTimer) startReporting(ctx, state);
+		if (automaticReports && !state.reportTimer) startReporting(ctx, state, intervalMinutes);
 		record(state, "agent", "agent started");
 		persist(state);
 	});
@@ -337,13 +408,16 @@ export default function (pi: ExtensionAPI): void {
 		handler: async (args, ctx) => {
 			if (!state) state = createSnapshot(ctx);
 			if (args.trim() === "off") {
+				automaticReports = false;
 				stopReporting(state);
 				notify(ctx, "automatic reports disabled");
 				return;
 			}
 			if (args.trim() === "on") {
+				automaticReports = true;
+				if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) intervalMinutes = DEFAULT_INTERVAL_MINUTES;
 				stopReporting(state);
-				startReporting(ctx, state);
+				startReporting(ctx, state, intervalMinutes);
 				notify(ctx, "automatic reports enabled");
 				return;
 			}
@@ -352,14 +426,6 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_shutdown", async () => {
-		if (!state) return;
-		state.shuttingDown = true;
-		stopReporting(state);
-		if (process.env.PI_OBSERVER_KEEP_SNAPSHOTS === "1") return;
-		const files = [snapshotPath(state), summaryPath(state)];
-		state.writeQueue = state.writeQueue
-			.then(() => Promise.all(files.map((file) => fs.promises.rm(file, { force: true }))))
-			.catch(() => undefined);
-		await state.writeQueue;
+		if (state) await finishState(state);
 	});
 }

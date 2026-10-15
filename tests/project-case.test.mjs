@@ -47,6 +47,15 @@ for (const entry of ['../secret:/tmp/ahsb-push/input', 'cmd:/etc/passwd', 'cmd:/
   });
 }
 
+test('rejects malformed runtime requirements and reserved runtime input destinations', async t => {
+  const f = await fixture(t);
+  await writeFile(join(f.caseDir, 'requires.json'), '{"pi":"latest"}');
+  await assert.rejects(prepare(f), /non-exact version/);
+  await writeFile(join(f.caseDir, 'requires.json'), '{"pi":"0.87.1"}');
+  await writeFile(join(f.caseDir, 'push'), 'tests/sandbox/smoke/cmd:/tmp/ahsb-push/ahsb-runtime/check.mjs\n');
+  await assert.rejects(prepare(f), /reserved for sandbox runtime checks/);
+});
+
 test('rejects case symlinks and project-escaping source symlinks', async t => {
   const f = await fixture(t);
   await symlink('/etc/passwd', join(f.caseDir, 'secret'));

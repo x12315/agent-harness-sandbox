@@ -1,0 +1,7 @@
+pi-observer/observer.ts:/tmp/ahsb-push/pi-observer/observer.ts
+pi-observer/install-guest.sh:/tmp/ahsb-push/pi-observer/install-guest.sh
+pi-observer/webui/manifest.json:/tmp/ahsb-push/pi-observer/webui/manifest.json
+pi-observer/webui/index.mjs:/tmp/ahsb-push/pi-observer/webui/index.mjs
+pi-observer/webui/sdk/index.mjs:/tmp/ahsb-push/pi-observer/webui/sdk/index.mjs
+pi-observer/webui/client/entry.mjs:/tmp/ahsb-push/pi-observer/webui/client/entry.mjs
+pi-observer/tests/real-provider-guest.mjs:/tmp/ahsb-push/pi-observer/tests/real-provider-guest.mjs

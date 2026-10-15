@@ -27,8 +27,9 @@ must not become a base dependency merely because a test needs it once. Consumer-
 
 Use package-manager caches for registry artifacts. Do not vendor `node_modules`,
 pacman package files, or native build trees into Git. A cache miss may download
-at build time; Linux guests must never download at runtime because they have no
-network device.
+at build/preparation time. Tool requirement checks and normal consumer acceptance
+never install or upgrade missing tools, including on NAT-enabled Tart guests.
+Linux guests must never download at runtime because they have no network device.
 
 Treat anything not pinned and not reused as ephemeral. Do not promote a
 single-use download into a shared cache without adding it to this policy.
@@ -42,7 +43,8 @@ single-use download into a shared cache without adding it to this policy.
 | npm dependency declaration | Source | `image-deps/package.json` and `image-deps/package-lock.json` |
 | Native Linux terminal runtime | Base | `mkosi.conf`: xterm + existing Xvfb/xwininfo/fonts; `mkosi.postinst` rejects xterm versions other than `411-1`; shared by terminal consumers and producer smoke |
 | Native terminal smoke script | Injected | `bin/native-terminal-smoke.sh` via case `push`; not baked into the base |
-| Tart `pi-iterm-macos26-ready` | Base | local Tart storage; cloned per macOS case |
+| Tart GUI seed and separately prepared runtime bases | Base | private local Tart storage; original seeds preserved, cloned per case |
+| Public macOS npm tarballs | Cached | dedicated `~/.cache/agent-harness-sandbox/runtime-tarballs/darwin-arm64-<lock-sha256>/`; no host-installed packages or user npm configuration |
 | Pi observer extension and WebUI plugin | Injected | repository source; Linux `PUSH`, macOS `macos-push` |
 | Test runs, sessions, mock logs, generated summaries | Ephemeral | per-run `OUT/runs/`; destroyed or retained only as evidence |
 
@@ -55,6 +57,41 @@ native-addon reproducibility remain defined by `mkosi.conf` and
 
 The Linux cache must be built on alpha because the prepared prefix contains Linux x86_64 native addons. A Mac cache may contain generic npm tarballs, but must not supply a
 macOS-built native module to the Linux image.
+
+## Shared Runtime Preparation and Consumer Requirements
+
+`image-deps/` is the producer-owned, fixed tool manifest. Consumer cases may
+request exact versions of supported tools in `requires.json`; they do not
+supply installer commands or modify the shared manifest. `guest-runtime.mjs`
+checks actual CLI entrypoints in isolated configuration, records cold-start
+latency, and performs a real native PTY spawn for WebUI. The check cannot invoke
+npm installation or silently replace versions. Missing/incompatible runtime is
+`NOT_READY` (78), before consumer commands/assertions; successful checks are not
+proof of consumer behavior or GUI readiness.
+
+`bin/prepare-tart-runtime.sh <new-name>` prepares a distinct macOS clone using
+the existing pinned host-key/SSH/no-host-sharing lifecycle. On the host,
+`cache-runtime-packages.mjs` uses npm's own cache APIs to copy only declared
+public-registry tarballs, verify lockfile integrity, and sanitize cached HTTP
+metadata (no authorization/request headers). The destination is keyed by
+platform, architecture and lock digest. Only missing artifacts are fetched;
+target packages are never installed/executed on the host. Registry artifacts
+are generic inputs, not a Mac-built `node_modules` bundle exported to Linux.
+
+The guest runs `npm ci --offline --ignore-scripts` from that dedicated cache,
+then explicit pinned lifecycle steps for Claude and the macOS node-pty prebuild.
+Missing native prebuilds fail; there is no hidden source-build/header-download
+fallback. node-pty 1.1.0's published macOS spawn-helper needs an executable-bit
+repair before the real PTY check. The resulting runtime receipt records
+OS/architecture, Node/ABI, tools, native smoke, timestamp and lock digest.
+Only successful preparation may save a new stopped base; existing names and
+original bases are never overwritten. Inputs and checksums stay in the run
+artifacts, not Git. Normal test calls cannot save bases.
+
+GUI/TCC prerequisites still come from the selected GUI seed. Runtime preparation
+does not grant permissions or establish GUI acceptance; validate a fresh clone.
+Projects inject their extensions/plugins during initialization, not into the
+shared base. This keeps common runtime upgrades independent of project edits.
 
 ## macOS Source Injection
 

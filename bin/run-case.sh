@@ -55,6 +55,11 @@ if [ -z "$CMD" ]; then
     CMD=$(cat "$CASE_DIR/cmd")
 fi
 
+if [ -f "$CASE_DIR/requires.json" ]; then
+    command -v node >/dev/null || { echo 'runtime requirements need host Node.js' >&2; exit 2; }
+    node "$TESTBED/bin/guest-runtime.mjs" --validate "$CASE_DIR/requires.json"
+fi
+
 mkdir -p "$OUT/runs/$CASE_ID"
 if [ -n "$RUN_DIR" ]; then
     mkdir -p "$(dirname "$RUN_DIR")"
@@ -145,7 +150,7 @@ push_file() {
     local src=$1 dst=$2 f b64 chunk
     case "$src" in /*) f=$src ;; *) f=$INPUT_ROOT/$src ;; esac
     [ -f "$f" ] || { echo "PUSH 源文件不存在：$f" >&2; exit 2; }
-    b64=$(base64 -w0 "$f" 2>/dev/null || base64 "$f" | tr -d '\n')
+    b64=$(base64 < "$f" | tr -d '\n')
     local tmp=/tmp/.ah-push.b64
     tx send-keys -t "$SES" -l -- ": > $tmp"; tx send-keys -t "$SES" Enter; sleep 0.2
     while [ -n "$b64" ]; do
@@ -167,10 +172,15 @@ if [ -f "$CASE_DIR/push" ]; then
     done < "$CASE_DIR/push"
 fi
 
+if [ -f "$CASE_DIR/requires.json" ]; then
+    push_file "$TESTBED/bin/guest-runtime.mjs" /tmp/ahsb-push/ahsb-runtime/check.mjs
+    push_file "$CASE_DIR/requires.json" /tmp/ahsb-push/ahsb-runtime/requires.json
+    CMD="export AHSB_RUNTIME_DIR=/usr; if command -v node >/dev/null 2>&1; then node /tmp/ahsb-push/ahsb-runtime/check.mjs --check /tmp/ahsb-push/ahsb-runtime/requires.json /usr >/tmp/ah-runtime.json && { $CMD ; }; else printf '%s' '{\"ok\":false,\"error\":\"guest Node.js missing\"}' >/tmp/ah-runtime.json; (exit 78); fi"
+fi
 REMOTE="$PRELUDE; mkdir -p /work; cd /work; { $CMD ; } >/tmp/ah.out 2>/tmp/ah.err; echo \$? >/tmp/ah.rc;"
 # 只把真实存在的路径交给 tar：harness 还没跑过时 ~/.claude 不存在，
 # 而 tar 遇到不存在的成员会整个不产出归档（踩过，表现为 base64: No such file）。
-REMOTE="$REMOTE cd /; F='tmp/ah.out tmp/ah.err tmp/ah.rc'; for p in tmp/ah-artifacts root/.claude root/.claude.json root/.pi root/.codex; do [ -e \"\$p\" ] && F=\"\$F \$p\"; done; tar -czf /tmp/ah.tgz \$F;"
+REMOTE="$REMOTE cd /; F='tmp/ah.out tmp/ah.err tmp/ah.rc'; [ ! -f /tmp/ah-runtime.json ] || F=\"\$F tmp/ah-runtime.json\"; for p in tmp/ah-artifacts root/.claude root/.claude.json root/.pi root/.codex; do [ -e \"\$p\" ] && F=\"\$F \$p\"; done; tar -czf /tmp/ah.tgz \$F;"
 # 标记由 guest 自己生成：串口会把命令行原样回显，如果标记写在命令里，
 # 回显本身就包含它，会让人误以为命令已经跑完（踩过两次）。
 # 回显里是字面量 "\$R"，只有真正的输出里才是数字，正则天然区分得开。
@@ -206,11 +216,21 @@ if ! tr -d '\r' < "$RUN_DIR/vm.log" \
 fi
 tar -xzf "$RUN_DIR/guest.tgz" -C "$RUN_DIR/guest"
 rm -f "$RUN_DIR/guest.tgz"
+[ ! -f "$RUN_DIR/guest/tmp/ah-runtime.json" ] || cp "$RUN_DIR/guest/tmp/ah-runtime.json" "$RUN_DIR/runtime.json"
 
 if [ -f "$MOCK_REQUESTS" ]; then
     jq -c --argjson a "$START" --argjson b "$END" 'select(.ts >= $a and .ts <= $b)' \
         "$MOCK_REQUESTS" >"$RUN_DIR/mock-requests.jsonl" 2>"$RUN_DIR/mock-jq.err" || \
         echo "mock 请求切片失败，见 mock-jq.err" >&2
+fi
+
+RC=$(cat "$RUN_DIR/guest/tmp/ah.rc" 2>/dev/null || echo 255)
+if [ "$RC" = 78 ] && [ -f "$CASE_DIR/requires.json" ] && [ -s "$RUN_DIR/runtime.json" ] &&
+    node -e 'process.exit(JSON.parse(require("node:fs").readFileSync(process.argv[1])).ok === false ? 0 : 1)' "$RUN_DIR/runtime.json"; then
+    cleanup_vm
+    echo "case=$CASE_ID rc=$RC dir=$RUN_DIR"
+    echo "runtime=$CASE_ID NOT_READY (see $RUN_DIR/runtime.json)" >&2
+    exit 78
 fi
 
 # ── 5.5 可选的 post.sh：VM 还活着时跑（带外通道的验证就靠它）─────
@@ -228,9 +248,7 @@ fi
 # Idempotent with the EXIT trap; never touch another call's machine/session.
 cleanup_vm
 
-RC=$(cat "$RUN_DIR/guest/tmp/ah.rc" 2>/dev/null || echo 255)
 echo "case=$CASE_ID rc=$RC dir=$RUN_DIR"
-
 # 用例自己的断言（可选）。跑在销毁之后：断言只依赖已经收回来的产物。
 if [ -f "$CASE_DIR/assert.sh" ]; then
     if TESTBED="$TESTBED" CASE_ID="$CASE_ID" PUSH="$PUSH" bash "$CASE_DIR/assert.sh" "$RUN_DIR" 2>&1 | tee "$RUN_DIR/assert.txt"; then

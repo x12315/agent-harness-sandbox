@@ -30,6 +30,14 @@ VM_MEMORY=${TART_MEMORY_MB:-4096}
 : "${TART_KNOWN_HOSTS:?set TART_KNOWN_HOSTS to its pinned host key file}"
 CASE_TIMEOUT=${CASE_TIMEOUT:-300}
 [[ $CASE_TIMEOUT =~ ^[1-9][0-9]*$ ]] || { echo 'CASE_TIMEOUT must be a positive number of seconds' >&2; exit 2; }
+if [ -f "$CASE_DIR/requires.json" ]; then
+    command -v node >/dev/null || { echo 'runtime requirements need host Node.js' >&2; exit 2; }
+    node "$ROOT/bin/guest-runtime.mjs" --validate "$CASE_DIR/requires.json"
+fi
+if [ -n "${TART_SAVE_BASE:-}" ]; then
+    [ "$CASE_ID" = tart-runtime-prepare ] && [[ $TART_SAVE_BASE =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || { echo 'saving a base is restricted to explicit runtime preparation' >&2; exit 2; }
+    ! tart get "$TART_SAVE_BASE" >/dev/null 2>&1 || { echo 'prepared base already exists; refusing overwrite' >&2; exit 2; }
+fi
 for tool in tart ssh scp awk nice base64 od realpath shasum; do command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 2; }; done
 [ -f "$TART_SSH_KEY" ] && [ -r "$TART_SSH_KEY" ] && [ -s "$TART_SSH_KEY" ] || {
     echo "guest SSH private key missing, empty, or unreadable: $TART_SSH_KEY" >&2; exit 2;
@@ -161,7 +169,25 @@ if [ -f "$PUSH_MANIFEST" ]; then
 fi
 
 INPUT=$CASE_DIR/cmd
+if [ -f "$CASE_DIR/requires.json" ]; then
+    "${SSH[@]}" "$GUEST_USER@$IP" /bin/mkdir -p /tmp/ahsb-push/ahsb-runtime < /dev/null
+    "${SCP[@]}" "$ROOT/bin/guest-runtime.mjs" "$GUEST_USER@$IP:/tmp/ahsb-push/ahsb-runtime/check.mjs" < /dev/null
+    "${SCP[@]}" "$CASE_DIR/requires.json" "$GUEST_USER@$IP:/tmp/ahsb-push/ahsb-runtime/requires.json" < /dev/null
+    shasum -a 256 "$ROOT/bin/guest-runtime.mjs" "$CASE_DIR/requires.json" > "$RUN_DIR/runtime-check-source.sha256"
+    INPUT=$TEMP_DIR/runtime-command.sh
+    {
+        printf '%s\n' 'export AHSB_RUNTIME_DIR="${AHSB_RUNTIME_DIR:-$HOME/.local/share/ahsb-runtime}"'
+        printf '%s\n' 'if [ ! -d "$AHSB_RUNTIME_DIR" ] && [ "$(uname -s)" = Linux ]; then export AHSB_RUNTIME_DIR=/usr; fi'
+        printf '%s\n' 'export PATH="$AHSB_RUNTIME_DIR/node_modules/.bin:$AHSB_RUNTIME_DIR/bin:$PATH"'
+        printf '%s\n' 'if command -v node >/dev/null 2>&1; then'
+        printf '%s\n' 'node /tmp/ahsb-push/ahsb-runtime/check.mjs --check /tmp/ahsb-push/ahsb-runtime/requires.json "$AHSB_RUNTIME_DIR" > /tmp/ah-runtime.json' 'runtime_rc=$?'
+        printf '%s\n' 'else' 'printf '\''{"ok":false,"error":"guest Node.js missing"}\n'\'' > /tmp/ah-runtime.json' 'runtime_rc=78' 'fi'
+        printf '%s\n' 'echo "==AH_RUNTIME_BEGIN=="' 'cat /tmp/ah-runtime.json' 'echo "==AH_RUNTIME_END=="' '[ "$runtime_rc" = 0 ] || exit "$runtime_rc"'
+        cat "$CASE_DIR/cmd"
+    } > "$INPUT"
+fi
 if [ "$DISPLAY_MODE" = headed ]; then
+    CASE_INPUT=$INPUT
     INPUT=$TEMP_DIR/guest-command.sh
     {
         printf '%s\n' 'umask 077' 'job=$(mktemp -d)' 'trap '\''rm -rf "$job"'\'' EXIT'
@@ -176,7 +202,7 @@ if [ "$DISPLAY_MODE" = headed ]; then
             printf '%s\n' 'echo "guest X11 desktop or ImageMagick capture not ready" >&2; exit 42; fi'
         fi
         printf 'cat > "$job/case" <<'\''AHCASE_%s'\''\n' "$$"
-        cat "$CASE_DIR/cmd"
+        cat "$CASE_INPUT"
         printf '\nAHCASE_%s\n' "$$"
         printf 'if /bin/%s -l "$job/case"; then rc=0; else rc=$?; fi\n' "$GUEST_SHELL"
         if [ "$GUEST_OS" = darwin ]; then
@@ -229,14 +255,26 @@ if [ "$DISPLAY_MODE" = headed ] && [ "$RC" != 124 ]; then
     fi
 fi
 printf '%s\n' "$RC" > "$RUN_DIR/guest/tmp/ah.rc"
+if grep -q '^==AH_RUNTIME_BEGIN==$' "$RUN_DIR/guest/tmp/ah.out"; then
+    awk '/^==AH_RUNTIME_BEGIN==$/{capture=1;next} /^==AH_RUNTIME_END==$/{capture=0} capture' "$RUN_DIR/guest/tmp/ah.out" > "$RUN_DIR/runtime.json"
+fi
 tart stop "$VM" >/dev/null
 wait "$RUN_PID" 2>/dev/null || true
+if [ "$RC" = 0 ] && [ -n "${TART_SAVE_BASE:-}" ]; then
+    TART_NO_AUTO_PRUNE=1 tart clone "$VM" "$TART_SAVE_BASE"
+    printf '%s\n' "$TART_SAVE_BASE" > "$RUN_DIR/prepared-base.txt"
+fi
 tart delete "$VM" >/dev/null
 created=0
 printf 'case=%s rc=%s dir=%s\n' "$CASE_ID" "$RC" "$RUN_DIR"
 if [ -f "$RUN_DIR/timeout.txt" ]; then
     echo "case timed out (see $RUN_DIR/timeout.txt)" >&2
     exit 124
+fi
+if [ "$RC" = 78 ] && [ -f "$CASE_DIR/requires.json" ] && [ -s "$RUN_DIR/runtime.json" ] &&
+    node -e 'process.exit(JSON.parse(require("node:fs").readFileSync(process.argv[1])).ok === false ? 0 : 1)' "$RUN_DIR/runtime.json"; then
+    echo "runtime=$CASE_ID NOT_READY (see $RUN_DIR/runtime.json)" >&2
+    exit 78
 fi
 if [ -f "$CASE_DIR/assert.sh" ]; then
     if bash "$CASE_DIR/assert.sh" "$RUN_DIR" > "$RUN_DIR/assert.txt" 2>&1; then

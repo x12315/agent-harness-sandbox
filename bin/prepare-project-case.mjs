@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import { cp, lstat, mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { parseRequirements } from './guest-runtime.mjs';
 
 const [projectPath, caseId, destination] = process.argv.slice(2);
 if (!projectPath || !destination || !/^[a-z0-9][a-z0-9-]*$/.test(caseId ?? '')) {
@@ -38,6 +39,7 @@ const caseDirectory = resolve(project, caseRelative);
 if (!confined(project, await realpath(caseDirectory))) throw new Error('case directory escapes project');
 await collect(caseDirectory);
 if (!files.has(`${caseRelative}/cmd`)) throw new Error(`missing case cmd: ${caseRelative}`);
+if (files.has(`${caseRelative}/requires.json`)) parseRequirements(await readFile(join(caseDirectory, 'requires.json'), 'utf8'));
 
 for (const manifest of ['push', 'macos-push']) {
   const path = `${caseRelative}/${manifest}`;
@@ -48,6 +50,7 @@ for (const manifest of ['push', 'macos-push']) {
     if (!match || isAbsolute(match[1]) || match.slice(1).some(value => value.split('/').some(part => part === '.' || part === '..'))) {
       throw new Error(`invalid ${manifest} entry: ${line}`);
     }
+    if (match[2] === '/tmp/ahsb-push/ahsb-runtime' || match[2].startsWith('/tmp/ahsb-push/ahsb-runtime/')) throw new Error('push destination is reserved for sandbox runtime checks');
     if (['project-source.sha256', 'sandbox-source.sha256'].includes(match[1])) {
       throw new Error(`reserved snapshot filename: ${match[1]}`);
     }

@@ -3,19 +3,20 @@ import { join } from "node:path";
 import { definePlugin } from "./sdk/index.mjs";
 
 const POLL_INTERVAL_MS = 15_000;
-const SNAPSHOT_MAX_AGE_MS = 60 * 60 * 1000;
+const SNAPSHOT_MAX_AGE_MS = 90_000;
+const SUMMARY_MAX_AGE_MS = 60 * 60 * 1000;
 const MAX_FILES = 128;
 const MAX_FILE_BYTES = 64 * 1024;
 
-const observerDirectory = process.env.PI_OBSERVER_DIR || join(homedir(), ".pi", "agent", "observer");
+const observerDirectory = process.env.PI_OBSERVER_DIR || join(process.env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent"), "observer");
 
 function isRecord(value) {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function recent(timestamp) {
+function recent(timestamp, maxAge = SNAPSHOT_MAX_AGE_MS) {
 	const time = Date.parse(timestamp || "");
-	return Number.isFinite(time) && Date.now() - time <= SNAPSHOT_MAX_AGE_MS;
+	return Number.isFinite(time) && Date.now() - time <= maxAge;
 }
 
 function parseSnapshot(text) {
@@ -31,7 +32,7 @@ function parseSnapshot(text) {
 function parseSummary(text) {
 	try {
 		const value = JSON.parse(text);
-		if (!isRecord(value) || typeof value.text !== "string" || !recent(value.reportedAt)) return null;
+		if (!isRecord(value) || typeof value.text !== "string" || !recent(value.reportedAt, SUMMARY_MAX_AGE_MS)) return null;
 		return value;
 	} catch {
 		return null;
@@ -57,7 +58,7 @@ async function collect(host) {
 		}
 	}
 
-	snapshots.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+	snapshots.sort((a, b) => Number(b.active) - Number(a.active) || Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
 	summaries.sort((a, b) => Date.parse(b.reportedAt) - Date.parse(a.reportedAt));
 	return { snapshots, summary: summaries[0] || null };
 }

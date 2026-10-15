@@ -1,0 +1,4 @@
+set -eu
+command -v agent-browser
+agent-browser skills get core
+bash /tmp/ahsb-push/pi-observer/tests/webui-guest.sh

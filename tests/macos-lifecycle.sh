@@ -46,6 +46,7 @@ if [ "${!#}" = /usr/bin/true ]; then
     fi
     exit 0
 fi
+if [[ "$*" == *' /bin/mkdir -p /tmp/ahsb-push/ahsb-runtime' ]]; then exit 0; fi
 touch "$FAKE_STATE/running-case"
 printf '%s\n' "$*" > "$FAKE_STATE/ssh-case-args"
 cat > "$FAKE_STATE/guest-input"
@@ -65,13 +66,18 @@ if [[ "${FAKE_SSH_MODE:-}" = *-ready ]]; then
     printf '==AH_GUI_END==\n'
     exit 0
 fi
+if [ "${FAKE_SSH_MODE:-}" = runtime-missing ]; then
+    printf '==AH_RUNTIME_BEGIN==\n{"ok":false,"error":"missing pi"}\n==AH_RUNTIME_END==\n'
+    exit 78
+fi
 if [ "${FAKE_SSH_MODE:-}" = pass ]; then
     printf '{"command":"get_commands","success":true,"data":{"commands":[]}}\n'
     exit 0
 fi
 exec sleep 10
 EOF
-chmod +x "$TMP/bin/tart" "$TMP/bin/ssh"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$FAKE_STATE/scp-args"\n' > "$TMP/bin/scp"
+chmod +x "$TMP/bin/tart" "$TMP/bin/ssh" "$TMP/bin/scp"
 export PATH="$TMP/bin:$PATH" FAKE_STATE="$TMP/state"
 export TART_BASE_VM=seed TART_KNOWN_HOSTS="$TMP/known_hosts" TART_SSH_KEY="$TMP/id_ed25519"
 run_case() {
@@ -101,6 +107,30 @@ test ! -f "$FAKE_STATE/present"
 if run_case invalid pass 0; then echo 'invalid timeout was accepted' >&2; exit 1; fi
 grep -q 'CASE_TIMEOUT must be a positive number' "$TMP/invalid.err"
 test ! -f "$FAKE_STATE/present"
+
+if TART_SAVE_BASE=should-not-exist run_case invalid-save pass 2; then
+    echo 'normal tests were allowed to save a base' >&2; exit 1
+fi
+grep -q 'saving a base is restricted' "$TMP/invalid-save.err"
+test ! -f "$FAKE_STATE/present"
+
+mkdir -p "$TMP/runtime-fixture/bin" "$TMP/runtime-fixture/cases/runtime-check"
+cp "$ROOT/bin/run-tart-case.sh" "$ROOT/bin/guest-runtime.mjs" "$TMP/runtime-fixture/bin/"
+printf 'macos-tart\n' > "$TMP/runtime-fixture/cases/runtime-check/target"
+printf 'echo consumer-command\n' > "$TMP/runtime-fixture/cases/runtime-check/cmd"
+printf '{"pi":"0.87.1"}\n' > "$TMP/runtime-fixture/cases/runtime-check/requires.json"
+printf 'touch "$FAKE_STATE/assert-was-called"\n' > "$TMP/runtime-fixture/cases/runtime-check/assert.sh"
+if ROOT="$TMP/runtime-fixture" FAKE_CASE_ID=runtime-check run_case runtime-missing runtime-missing 2; then
+    echo 'missing runtime was accepted' >&2; exit 1
+else test "$?" = 78; fi
+test -f "$TMP/runtime-missing/runtime.json"
+test ! -f "$FAKE_STATE/assert-was-called"
+grep -q 'runtime_rc' "$FAKE_STATE/guest-input"
+grep -q 'guest-runtime.mjs.*check.mjs' "$FAKE_STATE/scp-args"
+if grep -Eq 'npm (ci|install)|npx' "$FAKE_STATE/guest-input"; then
+    echo 'runtime test attempted package installation' >&2; exit 1
+fi
+test -f "$FAKE_STATE/deleted" && test ! -f "$FAKE_STATE/present"
 
 run_case success pass 2
 grep -q 'assert=macos-pi-discovery PASS' "$TMP/success.out"

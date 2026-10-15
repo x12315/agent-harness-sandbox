@@ -7,13 +7,13 @@
   "view": true,
   "permissions": ["fs:read", "ui"],
   "ui": {
-    "topbar.overflow": [
+    "topbar.primary": [
       {
         "id": "observer-tab",
         "label": "Pi Observer",
         "labelEn": "Pi Observer",
         "kind": "view",
-        "view": "pi-observer"
+        "view": "plugin:pi-observer"
       }
     ]
   },

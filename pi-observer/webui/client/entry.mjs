@@ -1,5 +1,3 @@
-import { defineView } from "../sdk/index.mjs";
-
 const initialState = {
 	authorized: false,
 	snapshots: [],
@@ -68,7 +66,8 @@ function render(root, state, send) {
 
 	const sessions = element("section", "sessions");
 	const active = state.snapshots.filter((snapshot) => snapshot.active).length;
-	sessions.append(element("div", "section-title", `${active ? `${active} active` : "No active"} session${state.snapshots.length === 1 ? "" : "s"}`));
+	const processes = new Set(state.snapshots.map((snapshot) => snapshot.pid)).size;
+	sessions.append(element("div", "section-title", `${state.snapshots.length} observed session${state.snapshots.length === 1 ? "" : "s"} · ${processes} process${processes === 1 ? "" : "es"} · ${active} active`));
 	if (state.snapshots.length === 0) {
 		sessions.append(element("p", "empty", "No current Pi observer snapshots."));
 	}
@@ -79,14 +78,23 @@ function render(root, state, send) {
 		top.append(element("span", `status ${snapshot.active ? "active" : "idle"}`, snapshot.active ? "Active" : "Idle"));
 		card.append(top);
 		const details = element("dl", "details");
+		const cwd = text(snapshot.cwd);
+		const parts = cwd.split(/[\\/]+/).filter(Boolean);
+		const directory = parts.length > 2 ? parts.at(-1) : cwd;
+		const workspace = element("p", "workspace", directory);
+		workspace.title = cwd;
+		workspace.ariaLabel = `Working directory: ${cwd}`;
+		card.append(workspace);
 		const rows = [
 			["Process", String(snapshot.pid ?? "-")],
-			["Working directory", text(snapshot.cwd)],
+			["Session", text(snapshot.id)],
 			["Latest tool", text(snapshot.lastTool)],
 			["Activity", formatAge(snapshot.lastActivityAt)],
 		];
-		for (const [label, value] of rows) {
-			details.append(element("dt", "", label), element("dd", "", value));
+		for (const [label, value, fullValue] of rows) {
+			const detail = element("dd", "", value);
+			detail.title = fullValue || value;
+			details.append(element("dt", "", label), detail);
 		}
 		card.append(details);
 		if (snapshot.lastAssistantText) card.append(element("p", "assistant-text", snapshot.lastAssistantText));
@@ -96,13 +104,15 @@ function render(root, state, send) {
 	root.append(shell);
 }
 
-export default defineView({
+export default {
 	mount(container, ctx) {
 		const style = document.createElement("style");
 		style.textContent = `
 			.observer { max-width: 980px; margin: 0 auto; padding: 24px; color: var(--text, #e7e9ed); font: 14px/1.5 system-ui, sans-serif; }
 			.observer-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border, #363a43); padding-bottom: 16px; }
 			.observer-title { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: 0; }
+			.sessions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); column-gap: 16px; }
+			.sessions > .section-title, .sessions > .empty { grid-column: 1 / -1; }
 			.updated, .summary-time, .empty { margin: 3px 0 0; color: var(--muted, #a0a6b2); font-size: 12px; }
 			.icon-button, .primary { border: 1px solid var(--border, #4b5260); border-radius: 5px; padding: 7px 10px; background: var(--button, #272b33); color: inherit; cursor: pointer; font: inherit; }
 			.icon-button:hover, .primary:hover { background: var(--button-hover, #363c47); }
@@ -119,22 +129,28 @@ export default defineView({
 			.status { flex: 0 0 auto; border-radius: 999px; padding: 2px 7px; font-size: 11px; }
 			.status.active { background: #174d35; color: #a8e6c3; }
 			.status.idle { background: #3a3f49; color: #d3d7de; }
-			.details { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 4px 12px; margin: 11px 0 0; }
+			.workspace { font-size: 12px; margin: 6px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #a0a6b2); }
+			.details { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 4px 8px; margin: 8px 0 0; font-size: 12px; }
 			.details dt { color: var(--muted, #a0a6b2); }
-			.details dd { margin: 0; overflow-wrap: anywhere; }
+			.details dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 			.assistant-text { margin: 12px 0 0; color: var(--muted, #c1c6d0); overflow-wrap: anywhere; }
-			@media (max-width: 600px) { .observer { padding: 16px; } .details { grid-template-columns: 1fr; gap: 1px; } .details dd { margin-bottom: 7px; } }
+			@media (max-width: 600px) { .observer { padding: 16px; } .sessions { grid-template-columns: 1fr; } .details { grid-template-columns: 1fr; gap: 1px; } .details dd { margin-bottom: 7px; } }
 		`;
-		container.append(style);
+		const root = element("div");
+		container.append(style, root);
 		let state = initialState;
 		const update = (payload) => {
 			if (!payload || payload.type !== "observer-state") return;
 			state = payload;
-			render(container, state, ctx.send);
+			render(root, state, ctx.send);
 		};
-		ctx.onData(update);
-		render(container, state, ctx.send);
+		const offData = ctx.onData(update);
+		render(root, state, ctx.send);
 		ctx.send({ type: "observer-get" });
-		return () => style.remove();
+		return () => {
+			offData();
+			style.remove();
+			root.remove();
+		};
 	},
-});
+};

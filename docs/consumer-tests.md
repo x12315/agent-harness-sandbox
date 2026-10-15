@@ -18,6 +18,7 @@ my-project/
     ├── cmd            # 必填：guest 命令
     ├── target         # 可选：linux-vmspawn（默认）、macos-tart、linux-tart
     ├── push           # 可选：要送入 guest 的项目文件
+    ├── requires.json  # 可选：沙盒通用工具的精确版本需求
     ├── assert.sh      # 可选：宿主断言，参数 $1 为本次产物目录
     ├── env            # 仅 vmspawn：可信宿主配置，如 CPUS、RAM
     ├── post.sh        # 仅 vmspawn：VM 尚在运行时的可信宿主检查
@@ -83,6 +84,47 @@ EXECUTION=local /path/to/agent-harness-sandbox/bin/test.sh \
 4. 清理发起机和远端暂存目录，保留本次测试证据。失败/断言失败也会清理；远端 runner 被 SIGKILL 或机器掉电时无法承诺清理。
 
 远端 sandbox 不匹配时返回失败，不启动 VM、不自动更新 checkout。先协调 `bin/sync.sh`，或设置 `DEST` 为独立的匹配 sandbox checkout；不要在别人运行时覆盖目录。外部项目不会被安装到远端 sandbox 的 `cases/`。
+
+## 工具需求：声明、准备、验收分开
+
+项目负责声明依赖与业务断言，sandbox 负责准备通用工具、运行前验证和 VM 生命周期。
+`requires.json` 是非空的工具名到精确版本的映射，不接受命令、任意 npm 包或版本范围：
+
+```json
+{"pi":"0.87.1","pi-web-ui":"0.96.1","agent-browser":"0.38.2"}
+```
+
+当前支持 `pi`、`pi-web-ui`、`agent-browser`、`claude`。版本来源仍是 sandbox 的
+`image-deps/`，使用者声明不自动改动该清单。版本冲突应明确更新配方并准备独立基底，
+不能在测试时升级现有工具来掩盖应用兼容问题。
+
+三个 backend 都在业务命令前检查实际包和 CLI 入口；WebUI 还要真实创建原生 PTY
+子进程，不能仅凭文件存在、`require()` 或 PATH 中一个同名包装器判定通过。
+版本探针使用独立临时 Pi 配置目录，避免加载用户扩展、会话或认证；这不替代项目
+对实际工作环境、权限主体及模型配置的业务验收。
+
+检查通过后提供 guest 的 `$AHSB_RUNTIME_DIR` 和工具 PATH。macOS 的通用运行时
+根目录由 sandbox 管理（`~/.local/share/ahsb-runtime`），Linux 镜像默认 `/usr`。
+这些环境只属于本次 guest 命令，不保证独立原生应用启动的子 shell 自动继承。
+检查证据在本次 `runtime.json`，含工具版本、OS/架构、Node ABI、CLI 探针耗时及
+PTY 结果。缺项返回 **78 / NOT_READY**，不执行业务命令和业务断言；不是应用测试失败。
+未声明 `requires.json` 的旧用例行为不变，但也没有工具环境检查保证。
+`/tmp/ahsb-push/ahsb-runtime/` 保留给生产者检查程序，项目输入不可覆盖。
+
+macOS 环境准备由生产者的独立入口执行，而不是在每次验收里 npm install：
+
+```bash
+# 先加载私有 Tart profile；现有基底保持不变，名字必须尚不存在。
+bash bin/prepare-tart-runtime.sh <new-runtime-base>
+# 后续使用新的停机基底；不自动改写私有 profile。
+TART_BASE_VM=<new-runtime-base> bin/test.sh --project /path/to/project smoke
+```
+
+准备流程只在宿主整理经过 lockfile integrity 校验的公共 npm tarball，不安装或运行
+被测包；优先复用 npm cache，缺包才下载。随后在私有 guest 克隆里离线安装、
+验证实际 CLI 与原生 PTY，成功才保存为新基底。旧基底不修改，已有名字不覆盖，
+Observer 等项目扩展/插件不进入通用基底。Linux 继续使用 `bin/build-image.sh`。
+详见 [artifact-policy.md](artifact-policy.md)。
 
 ## 依赖与产物
 

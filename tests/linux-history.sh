@@ -5,7 +5,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/repo/bin" "$TMP/repo/cases/history" "$TMP/tools" "$TMP/out" "$TMP/archive/tmp"
-cp "$ROOT/bin/run-case.sh" "$TMP/repo/bin/"
+cp "$ROOT/bin/run-case.sh" "$ROOT/bin/guest-runtime.mjs" "$TMP/repo/bin/"
 printf 'true\n' > "$TMP/repo/cases/history/cmd"
 printf '%s\n' "$$" > "$TMP/out/mock.pid"
 printf '0\n' > "$TMP/archive/tmp/ah.rc"
@@ -53,6 +53,22 @@ if FAKE_PAYLOAD="$TMP/broken-payload" bash "$TMP/repo/bin/run-case.sh" history >
 fi
 test "$(grep -c '^kill-session$' "$FAKE_TMUX_EVENTS")" = 2
 
+# Runtime failures must skip both post/assert business checks and retain exit 78.
+printf '{"pi":"0.87.1"}\n' > "$TMP/repo/cases/history/requires.json"
+printf 'touch "$FAKE_POST_CALLED"; exit 1\n' > "$TMP/repo/cases/history/post.sh"
+printf 'touch "$FAKE_ASSERT_CALLED"; exit 1\n' > "$TMP/repo/cases/history/assert.sh"
+export FAKE_POST_CALLED="$TMP/post-called" FAKE_ASSERT_CALLED="$TMP/assert-called"
+printf '78\n' > "$TMP/archive/tmp/ah.rc"
+printf '{"ok":false,"error":"missing pi"}\n' > "$TMP/archive/tmp/ah-runtime.json"
+tar czf "$TMP/guest.tgz" -C "$TMP/archive" tmp
+base64 < "$TMP/guest.tgz" > "$TMP/payload"
+if bash "$TMP/repo/bin/run-case.sh" history > "$TMP/missing-runtime.log" 2>&1; then
+    echo 'missing runtime was accepted' >&2; exit 1
+else test "$?" = 78; fi
+test ! -f "$FAKE_POST_CALLED" && test ! -f "$FAKE_ASSERT_CALLED"
+grep -q 'NOT_READY' "$TMP/missing-runtime.log"
+test "$(grep -c '^kill-session$' "$FAKE_TMUX_EVENTS")" -ge 2
+
 # Acceptance must preserve past runs too, including when run twice in one second.
 cp "$ROOT/bin/acceptance.sh" "$TMP/repo/bin/"
 cat > "$TMP/repo/bin/run-case.sh" <<'EOF'
@@ -68,7 +84,7 @@ chmod +x "$TMP/tools/setpriv" "$TMP/tools/systemctl"
 for i in 1 2; do
     SKIP_BUILD=1 PRIVDROP=1 bash "$TMP/repo/bin/acceptance.sh" history > "$TMP/accept$i.log" 2> "$TMP/accept$i.err"
 done
-test "$(find "$OUT/runs/history" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = 5
+test "$(find "$OUT/runs/history" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = 6
 grep -q '^ALL CASES PASS$' "$TMP/accept1.log"
 grep -q '^ALL CASES PASS$' "$TMP/accept2.log"
 echo 'ok: Linux history is retained; raw serial survives truncated scrollback; corrupt archives fail with cleanup'
