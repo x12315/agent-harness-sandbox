@@ -1,5 +1,7 @@
 # Responsive coordination runtime experiment
 
+Draft review: https://github.com/x12315/agent-harness-sandbox/pull/1, based on `feat/multi-backend-cli`; paired Engine experiment: https://github.com/x12315/agent-harness/pull/4, based on `feat/catalog-resource-sync`.
+
 This feature branch prepares a separate macOS runtime for the user's Pi coordination experiment. It does not upgrade an existing VM, modify the private selected profile, migrate sessions, or establish Linux compatibility. Existing consumer requirements pinned to Pi 0.87.1/Web UI 0.96.1 must continue using their older prepared base.
 
 ## Why these changes
