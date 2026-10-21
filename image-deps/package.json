@@ -4,8 +4,16 @@
   "version": "1.0.0",
   "dependencies": {
     "@anthropic-ai/claude-code": "2.1.283",
-    "@earendil-works/pi-coding-agent": "0.87.1",
+    "@earendil-works/pi-coding-agent": "1.1.0",
     "agent-browser": "0.38.2",
-    "pi-web-ui": "0.96.1"
+    "pi-web-ui": "0.100.0"
+  },
+  "overrides": {
+    "@earendil-works/chord": "1.1.0",
+    "@earendil-works/pi-agent-core": "1.1.0",
+    "@earendil-works/pi-ai": "1.1.0",
+    "@earendil-works/pi-codemode": "1.1.0",
+    "@earendil-works/pi-mcp": "1.1.0",
+    "@earendil-works/pi-tui": "1.1.0"
   }
 }

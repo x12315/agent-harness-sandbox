@@ -31,4 +31,6 @@ console.log(JSON.stringify(evidence));
 NODE
 echo '==AH_RUNTIME_END=='
 rm -rf "$SOURCE"
+# Tart stops the preparation VM immediately; persist installed files and executable modes first.
+sync
 echo 'runtime-prepare PASS'
